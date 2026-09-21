@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#080e1a"/>
+<title>NIDS-Live | Monitor</title>
+<style>
+:root{--bg:#080e1a;--card:#0e1929;--line:#1c2c42;--text:#ecf5ff;--muted:#8299b3;--blue:#52b6ff;--purple:#8e7dff;--red:#ff6c80;--green:#4de2a6}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% 0,#252050 0,transparent 32%),var(--bg);color:var(--text);font:14px/1.45 Inter,ui-sans-serif,system-ui,sans-serif}.wrap{max-width:1420px;margin:auto;padding:28px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}.title{display:flex;align-items:center;gap:13px}.mark{display:grid;place-items:center;width:44px;height:44px;border-radius:15px;background:linear-gradient(135deg,var(--blue),var(--purple));font-size:22px}.eyebrow{color:var(--muted);font-size:11px;letter-spacing:.12em;text-transform:uppercase}h1{margin:2px 0 0;font-size:21px}.live{display:flex;align-items:center;gap:8px;color:var(--green);font-size:12px;background:#12382f66;border:1px solid #4de2a633;border-radius:99px;padding:8px 12px}.live i{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 12px currentColor}
+.grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(330px,.8fr);gap:18px}.stack{display:flex;flex-direction:column;gap:18px}.card{background:linear-gradient(145deg,#102139dd,#0b1626dd);border:1px solid var(--line);border-radius:20px;padding:19px;box-shadow:0 22px 60px #0003}.card-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:15px}.card h2{font-size:13px;margin:0}.sub{color:var(--muted);font-size:11px;margin-top:3px}.badge{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--blue);background:#52b6ff14;border:1px solid #52b6ff2e;border-radius:99px;padding:5px 8px}
+#chart{width:100%;height:220px;display:block}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.stat{padding:13px;border:1px solid var(--line);border-radius:13px;background:#081423aa}.stat .n{font-size:25px;font-weight:750;letter-spacing:-.04em}.stat .l{color:var(--muted);font-size:11px;margin-top:3px}
+.model{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.model div{padding:12px;background:#0a1728;border:1px solid var(--line);border-radius:12px}.model strong{display:block;font-size:12px}.model span{display:block;color:var(--muted);font-size:11px;margin-top:4px}
+.status-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.status-tile{padding:11px 10px;border:1px solid var(--line);border-radius:10px;background:#081423aa}.status-tile strong{display:block;font-size:13px;line-height:1.2}.status-tile span{display:block;color:var(--muted);font-size:10px;margin-top:4px;text-transform:uppercase;letter-spacing:.08em}
+.action-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.report-btn,.ghost-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;cursor:pointer;text-decoration:none;font-size:11px;color:#fff;border-radius:9px;padding:8px 11px;font-weight:700}.report-btn{background:linear-gradient(135deg,#329fe9,#657bff)}.ghost-btn{background:#12233a;border:1px solid var(--line);color:#dfeaff}.history-table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px}.history-table th,.history-table td{padding:8px 7px;border-bottom:1px solid #ffffff0d;text-align:left;vertical-align:top}.history-table th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.history-table td{color:#dfeaff}.pill{display:inline-flex;align-items:center;border-radius:999px;padding:4px 7px 4px 8px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.pill.benign{background:#143829;color:#9ef0c0}.pill.dos{background:#391a22;color:#ffafbb}.pill.portscan{background:#362d10;color:#f9d580}.pill.unknown{background:#1b233b;color:#b8c8dd}
+#packetStream{max-height:380px;overflow:auto}.packet{display:grid;grid-template-columns:70px 105px minmax(90px,1fr) 75px 75px;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #ffffff0d;font-size:11px}.packet:last-child{border-bottom:0}.packet .time,.packet .source,.packet .size{color:var(--muted)}.packet .event{font-weight:700;color:#dcecff}.packet .kind{justify-self:start;border-radius:99px;padding:3px 7px;background:#52b6ff18;color:var(--blue);font-size:10px}.packet .kind.flood{color:var(--red);background:#ff6c8018}.packet .status{font-size:10px;color:var(--green)}.packet .status.blocked{color:var(--red)}
+#alerts{max-height:655px;overflow:auto;display:flex;flex-direction:column;gap:11px}.empty{color:var(--muted);text-align:center;padding:60px 18px;font-size:13px}.alert{border:1px solid #ff6c806b;background:linear-gradient(145deg,#291723,#171725);border-radius:15px;padding:14px;animation:pop .3s ease}.top{display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:9px}.top b{color:var(--red)}.top span{color:var(--muted)}.alert-summary{font-size:12px;color:#d7c4ca;margin-bottom:12px}.alert-summary b{color:var(--text)}.bar-row{display:grid;grid-template-columns:125px 1fr 53px;gap:8px;align-items:center;font-size:11px;margin:6px 0}.lbl{color:var(--muted)}.bar-track{height:7px;background:#2a2634;border-radius:8px;overflow:hidden}.bar-fill{height:100%;background:linear-gradient(90deg,var(--purple),var(--red));border-radius:8px}.bar-fill.neg{background:var(--green)}.raw{margin-top:12px;padding-top:9px;border-top:1px solid #ffffff12;color:var(--muted);font-size:11px}.raw div{display:flex;justify-content:space-between;margin:3px 0}.raw b{color:var(--text)}@keyframes pop{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.explanation-card{grid-column:1/-1}.select-label{display:block;color:var(--muted);font-size:12px;margin:2px 0 7px}.explanation-card select{width:100%;background:#081423;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:11px;outline:none}.severity-header{margin-top:15px;padding:18px;border-radius:15px;border:1px solid #ff6c806b;background:linear-gradient(135deg,#32182a,#171b31)}.severity-header strong{display:block;font-size:20px;color:#ff9baa}.severity-header span{display:block;color:#d8c9d3;font-size:12px;margin-top:5px}.explanation-section{margin-top:16px;padding-top:14px;border-top:1px solid #ffffff12}.explanation-section h3,.recommendation h3{font-size:12px;margin:0 0 8px}.explanation-section p,.recommendation p{margin:0;color:#cbd9e7;font-size:13px}.explain-columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.detail{padding:8px 9px;border:1px solid var(--line);border-radius:9px;background:#081423aa}.detail small{display:block;color:var(--muted);font-size:10px}.detail b{display:block;margin-top:2px;font-size:12px;overflow-wrap:anywhere}.evidence-list{display:flex;flex-direction:column;gap:8px}.evidence{padding:10px;border-radius:9px;background:#0b2740;border:1px solid #52b6ff30;color:#d4e9fb;font-size:12px}.recommendation{margin-top:16px;padding:14px;border:1px solid #52b6ff45;background:#0c2942;border-radius:12px}.observed{margin-top:9px;padding:10px;background:#111d2d;border-radius:9px;color:#a9c4dd;font:11px ui-monospace,SFMono-Regular,Consolas,monospace}.ml-explanation{margin-top:16px;padding:13px;border:1px solid #8e7dff45;background:#17152d;border-radius:12px;color:#d9d3ff;font-size:12px}.ml-explanation h3{margin:0 0 7px;font-size:12px}.ml-meta{display:flex;gap:18px;color:#fff;margin-bottom:7px}.explanation-card[hidden]{display:none}
+@media(max-width:900px){.wrap{padding:18px}.grid{grid-template-columns:1fr}#alerts{max-height:none}}@media(max-width:520px){header{align-items:flex-start}.live{font-size:0}.live i{width:9px;height:9px}.stats,.model{grid-template-columns:1fr 1fr}.stats .stat:last-child{grid-column:span 2}.bar-row{grid-template-columns:105px 1fr 45px}}
+</style></head>
+<body><div class="wrap"><header><div class="title"><div class="mark">◈</div><div><div class="eyebrow">Operations center</div><h1>NIDS-Live threat monitor</h1></div></div><div class="live"><i></i><span>LIVE TELEMETRY</span></div></header>
+<div class="grid"><div class="stack"><section class="card"><div class="card-head"><div><h2>Traffic pulse</h2><div class="sub">Rolling request rate across the relay · last 30 seconds</div></div><div style="display:flex;gap:8px;align-items:center"><a class="report-btn" href="/api/report.pdf">↓ Download PDF</a><span class="badge">streaming</span></div></div><canvas id="chart"></canvas><div class="stats"><div class="stat"><div class="n" id="statRps">0</div><div class="l">requests / sec</div></div><div class="stat"><div class="n" id="statClients">0</div><div class="l">connected clients</div></div><div class="stat"><div class="n" id="statAlerts">0</div><div class="l">alerts this session</div></div></div></section>
+<section class="card"><div class="card-head"><div><h2>Detection engine</h2><div class="sub">CICIDS-2017 model plus optional Scapy live-flow capture</div></div><span class="badge">protected</span></div><div class="model"><div><strong>Random Forest</strong><span>CICIDS-2017 CSV training</span></div><div><strong>SHAP TreeExplainer</strong><span>Ranked attribution per alert</span></div><div><strong>Live flow window</strong><span>Scapy/Npcap when available</span></div></div><div class="status-grid"><div class="status-tile"><strong id="statusDataset">—</strong><span>Dataset</span></div><div class="status-tile"><strong id="statusModel">—</strong><span>Model</span></div><div class="status-tile"><strong id="statusShap">—</strong><span>SHAP</span></div><div class="status-tile"><strong id="statusCapture">—</strong><span>Capture</span></div></div><div class="action-row"><button id="initSystemBtn" class="ghost-btn">Initialize System</button><button id="evaluateModelBtn" class="report-btn">Evaluate Model</button></div><div id="modelSummary" class="sub" style="margin-top:12px">Loading detection status…</div></section>
+<section class="card"><div class="card-head"><div><h2>Model + History</h2><div class="sub">Current model metadata and in-memory attack history</div></div><span class="badge">session only</span></div><div id="historySummary" class="sub">No detections recorded yet.</div><div style="overflow:auto;margin-top:12px"><table class="history-table"><thead><tr><th>Time</th><th>Source</th><th>Class</th><th>Confidence</th><th>Details</th></tr></thead><tbody id="historyTableBody"><tr><td colspan="5" class="sub">Waiting for detection history…</td></tr></tbody></table></div></section></div>
+<section class="card explanation-card"><div class="card-head"><div><h2>🧠 Attack Explanation Panel</h2><div class="sub">Evidence-backed SOC explanation for the selected captured alert</div></div><span class="badge">interactive</span></div><label class="select-label" for="alertSelect">📌 Select an alert to explain</label><select id="alertSelect"><option value="">No alerts available</option></select><div id="explanationEmpty" class="empty">Waiting for a Npcap-captured DoS or PortScan alert.</div><div id="explanationContent" hidden><div id="severityHeader" class="severity-header"></div><div class="explanation-section"><h3>🔍 What happened?</h3><p id="whatHappened"></p></div><div class="explain-columns"><div class="explanation-section"><h3>🛡️ Detection Details</h3><div id="detectionDetails" class="detail-grid"></div></div><div class="explanation-section"><h3>📊 Evidence Summary</h3><div id="evidenceSummary" class="evidence-list"></div></div></div><div class="recommendation"><h3>⚠️ Recommended Action</h3><p id="recommendedAction"></p></div><div class="explanation-section"><h3>📌 Why this was flagged</h3><p id="whyFlagged"></p><div id="observedRule" class="observed"></div></div><div id="mlExplanation" class="ml-explanation"></div></div></section>
+<section class="card"><div class="card-head"><div><h2>Live anomaly reports</h2><div class="sub">Npcap-captured traffic only · threats are rate-limited automatically</div></div><span class="badge" id="alertBadge">0 alerts</span></div><div id="alerts"><div class="empty">All clear. Start an authorized private-LAN packet test or wait for captured traffic.</div></div></section></div></div>
+<section class="card" style="margin-top:18px"><div class="card-head"><div><h2>Live packet stream</h2><div class="sub">Application-level Socket.IO frames observed by the relay</div></div><span class="badge" id="packetBadge">0 packets / 30s</span></div><div class="packet" style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em"><span>Time</span><span>Source</span><span>Event</span><span>Kind</span><span>Size / state</span></div><div id="packetStream"><div class="empty">Waiting for live traffic…</div></div></section>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script><script>
+const socket=typeof io==='function'?io():null,alertsEl=document.getElementById('alerts');let alertCount=0;const knownAlertIds=new Set();
+const onSocket=(event,handler)=>{if(socket)socket.on(event,handler)};
+const labels={events_last_1s:'Events / 1s',events_last_5s:'Events / 5s',mean_interval_ms:'Mean interval',std_interval_ms:'Interval std',max_burst_100ms:'Burst count'};
+function fmt(k){return labels[k]||k}
+function setStatusText(){
+  const statusDataset = document.getElementById('statusDataset');
+  const statusModel = document.getElementById('statusModel');
+  const statusShap = document.getElementById('statusShap');
+  const statusCapture = document.getElementById('statusCapture');
+  const modelSummary = document.getElementById('modelSummary');
+  fetch('/api/system_status', {cache: 'no-store'}).then(r => r.json()).then(data => {
+    const model = data.model || {};
+    const dataset = data.dataset || {};
+    const capture = data.packet_capture || {};
+    statusDataset.textContent = dataset.available ? 'Ready' : 'Missing';
+    statusModel.textContent = model.loaded ? (model.status || 'Loaded') : 'Offline';
+    statusShap.textContent = data.shap && data.shap.ready ? 'Ready' : 'No';
+    statusCapture.textContent = capture.ready ? 'Live' : 'Idle';
+    modelSummary.textContent = `Model: ${model.status || 'unknown'} · Dataset: ${dataset.available ? 'present' : 'missing'} · Capture: ${capture.status || 'unavailable'} · SHAP: ${data.shap && data.shap.ready ? 'enabled' : 'disabled'}`;
+  }).catch(() => {
+    statusDataset.textContent = '—';
+    statusModel.textContent = '—';
+    statusShap.textContent = '—';
+    statusCapture.textContent = '—';
+    modelSummary.textContent = 'Detection status unavailable.';
+  });
+}
+function renderHistory(rows){
+  const table = document.getElementById('historyTableBody');
+  const summary = document.getElementById('historySummary');
+  if (!rows || !rows.length) {
+    table.innerHTML = '<tr><td colspan="5" class="sub">No detection history yet.</td></tr>';
+    summary.textContent = 'No detections recorded yet.';
+    return;
+  }
+  summary.textContent = `${rows.length} detections recorded in this in-memory session.`;
+  table.innerHTML = rows.slice(0, 8).map(row => {
+    const source = row.source_ip || row.destination_ip || 'unknown';
+    const cls = (row.predicted_class || 'UNKNOWN').toUpperCase();
+    const clsName = cls.toLowerCase().replace(/[^a-z]/g, '');
+    const css = clsName === 'portscan' ? 'portscan' : clsName === 'dos' ? 'dos' : clsName === 'benign' ? 'benign' : 'unknown';
+    return `<tr><td>${new Date((row.timestamp || Date.now()/1000) * 1000).toLocaleTimeString()}</td><td>${escapeHtml(source)}</td><td><span class="pill ${css}">${escapeHtml(cls)}</span></td><td>${Number(row.confidence || 0).toFixed(2)}%</td><td>${escapeHtml(row.detection_method || 'CICIDS')}<br><span class="sub">${escapeHtml(row.destination_ip || 'gateway')}</span></td></tr>`;
+  }).join('');
+}
+function renderAlert(r){if(!r)return;if(!alertCount)alertsEl.innerHTML='';alertCount++;document.getElementById('statAlerts').textContent=alertCount;document.getElementById('alertBadge').textContent=alertCount+' alert'+(alertCount===1?'':'s');const shap=r.shap||[];const max=Math.max(...shap.map(s=>Math.abs(Number(s.value)||0)),.001);const bars=shap.map(s=>`<div class="bar-row"><span class="lbl">${fmt(s.feature)}</span><span class="bar-track"><span class="bar-fill ${s.value<0?'neg':''}" style="width:${Math.abs(s.value)/max*100}%"></span></span><span style="text-align:right;color:var(--muted)">${Number(s.value).toFixed(3)}</span></div>`).join('');const raw=Object.entries(r.features||{}).map(([k,v])=>`<div><span>${fmt(k)}</span><b>${escapeHtml(String(v))}</b></div>`).join('');const d=document.createElement('article');d.className='alert';d.innerHTML=`<div class="top"><b>⚠ ${escapeHtml(r.threat_type||'Anomaly')} detected</b><span>${new Date(r.ts*1000).toLocaleTimeString()}</span></div><div class="alert-summary">Source <b>${escapeHtml(r.source||r.client||'Unknown')}</b> · origin <b>${escapeHtml(r.traffic_source||'Unknown')}</b> · method <b>${escapeHtml(r.detection_method||'Unknown')}</b>${r.confidence!=null?` · confidence <b>${r.confidence}%</b>`:''} · connection mitigated for 10s</div>${bars}<details class="raw"><summary>Observed evidence</summary>${raw}</details>`;alertsEl.prepend(d);addExplanationAlert(r)}
+const explanationAlerts=[];const alertSelect=document.getElementById('alertSelect');
+function addExplanationAlert(r){const index=explanationAlerts.push(r)-1;const option=document.createElement('option');option.value=index;option.textContent=`${new Date(r.ts*1000).toLocaleString()} — ${r.threat_type||'Anomaly'} | ${r.source||r.client||'Unknown'} → ${r.destination||'NIDS-Live relay'}`;alertSelect.appendChild(option);alertSelect.value=String(index);renderExplanation(r)}
+function renderExplanation(r){const e=r.explanation||{};document.getElementById('explanationEmpty').hidden=true;document.getElementById('explanationContent').hidden=false;const severity=e.severity||r.severity||'MEDIUM';const source=e.source||r.source||r.client;const destination=e.destination||r.destination;document.getElementById('severityHeader').innerHTML=`<strong>🚨 ${escapeHtml(severity)} SEVERITY — ${escapeHtml(e.threatType||r.threat_type||'Anomaly')}</strong><span>${source?`Source: ${escapeHtml(String(source))}`:''}${destination?` → Target: ${escapeHtml(String(destination))}`:''} · Method: ${escapeHtml(e.detectionMethod||r.detection_method||'Unknown')}</span>`;document.getElementById('whatHappened').textContent=e.explanation||'Explanation unavailable for this alert.';document.getElementById('recommendedAction').textContent=e.recommendedAction||'Review the source activity and related logs.';document.getElementById('whyFlagged').textContent=e.whyFlagged||'The alert was raised by the detection pipeline.';document.getElementById('observedRule').textContent=e.observed||r.observed_rule||'';const details=document.getElementById('detectionDetails');details.innerHTML=Object.entries(e.detectionDetails||{}).filter(([,v])=>v!==null&&v!==undefined&&v!=='').map(([k,v])=>`<div class="detail"><small>${escapeHtml(k)}</small><b>${escapeHtml(k==='ML confidence'?`${v}%`:String(v))}</b></div>`).join('')||'<span class="sub">No structured fields are available.</span>';document.getElementById('evidenceSummary').innerHTML=(e.evidence||[]).map(v=>`<div class="evidence">${escapeHtml(v)}</div>`).join('')||'<span class="sub">No additional metrics were included in this alert.</span>';const ml=e.mlExplanation,mlEl=document.getElementById('mlExplanation');mlEl.innerHTML=ml?`<h3>🤖 ML / Rule Explanation</h3>${ml.prediction!=null||ml.confidence!=null?`<div class="ml-meta">${ml.prediction?`<span>Prediction: <b>${escapeHtml(String(ml.prediction))}</b></span>`:''}${ml.confidence!=null?`<span>Confidence: <b>${ml.confidence}%</b></span>`:''}</div>`:''}<div>${escapeHtml(ml.message||'')}</div>`:''}
+alertSelect.onchange=()=>{const selected=explanationAlerts[Number(alertSelect.value)];if(selected)renderExplanation(selected)};
+function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function acceptAlert(r){if(!r)return;const id=r.id||`${r.ts}-${r.source_ip}-${r.threat_type}`;if(knownAlertIds.has(id))return;knownAlertIds.add(id);renderAlert(r)}
+onSocket('anomaly',acceptAlert);
+async function refreshAlerts(){try{const response=await fetch('/api/alerts',{cache:'no-store'});const current=await response.json();current.slice().reverse().forEach(acceptAlert)}catch(e){}}
+async function refreshHistory(){try{const response=await fetch('/api/detection_history?class=ALL',{cache:'no-store'});const rows=await response.json();renderHistory(rows);}catch(e){}}
+async function evaluateAndRefresh(){
+  const btn = document.getElementById('evaluateModelBtn');
+  const summary = document.getElementById('modelSummary');
+  btn.disabled = true;
+  btn.textContent = 'Evaluating…';
+  summary.textContent = 'Evaluating the Random Forest against the bundled CICIDS dataset…';
+  try {
+    const start = await fetch('/api/evaluate_model', {method:'POST', cache: 'no-store'});
+    const started = await start.json().catch(() => ({}));
+    if (!start.ok || !started.ok) throw new Error(started.error || 'Evaluation could not start');
+    let data = started;
+    while (data.status === 'running') {
+      await new Promise(resolve => setTimeout(resolve, 750));
+      const status = await fetch('/api/evaluate_model/status', {cache: 'no-store'});
+      data = await status.json().catch(() => ({}));
+      if (!status.ok || !data.ok) throw new Error(data.error || 'Evaluation failed');
+    }
+    if (data.status !== 'complete') throw new Error(data.error || 'Evaluation failed');
+    const metrics = data.results || {};
+    summary.textContent = `Evaluation complete · Accuracy: ${(Number(metrics.accuracy || 0) * 100).toFixed(2)}% · Precision: ${(Number(metrics.precision || 0) * 100).toFixed(2)}% · Recall: ${(Number(metrics.recall || 0) * 100).toFixed(2)}% · F1: ${(Number(metrics.f1_score || 0) * 100).toFixed(2)}%`;
+    await refreshHistory();
+    btn.textContent = 'Evaluate Model';
+  } catch (err) {
+    btn.textContent = 'Evaluate Model';
+    summary.textContent = `Model evaluation failed: ${err.message || 'unknown error'}`;
+    alert(err.message || 'Evaluation failed');
+  } finally { btn.disabled = false; }
+}
+async function initSystem(){
+  try {
+    const res = await fetch('/api/init', {cache: 'no-store'});
+    const data = await res.json();
+    if (!data.ok) throw new Error('Initialization failed');
+    setStatusText();
+    await refreshHistory();
+  } catch (err) { alert(err.message || 'Initialization failed'); }
+}
+document.getElementById('initSystemBtn').addEventListener('click', initSystem);
+document.getElementById('evaluateModelBtn').addEventListener('click', evaluateAndRefresh);
+refreshAlerts();refreshHistory();setInterval(refreshAlerts,1000);setInterval(refreshHistory,5000);setInterval(setStatusText,5000);
+const packetStream=document.getElementById('packetStream'),packetRows=new Map();let packetCount=0;
+function renderPacket(p){if(!p||!p.id)return;if(packetStream.querySelector('.empty'))packetStream.innerHTML='';const row=document.createElement('div');row.className='packet';row.dataset.id=p.id;const source=p.source_ip?`${p.source} (${p.source_ip})`:p.source;const attackKind=p.kind==='dos_attack'||p.kind==='port_scan_attack';row.innerHTML=`<span class="time">${new Date(p.ts*1000).toLocaleTimeString()}</span><span class="source">${escapeHtml(source)}</span><span class="event">${escapeHtml(p.event)}</span><span class="kind ${attackKind?'flood':''}">${escapeHtml(p.kind)}</span><span class="size">${Number(p.size).toLocaleString()} B · <b class="status ${p.status==='blocked'?'blocked':''}">${p.status}</b></span>`;packetStream.prepend(row);packetRows.set(p.id,row);while(packetStream.children.length>101){const last=packetStream.lastElementChild;if(last)packetRows.delete(Number(last.dataset.id)),last.remove()}}
+onSocket('packet_event',renderPacket);fetch('/api/packets',{cache:'no-store'}).then(r=>r.json()).then(a=>a.slice().reverse().forEach(renderPacket)).catch(()=>{});
+const canvas=document.getElementById('chart'),ctx=canvas.getContext('2d');function resize(){const d=devicePixelRatio||1;canvas.width=canvas.clientWidth*d;canvas.height=canvas.clientHeight*d;ctx.setTransform(d,0,0,d,0,0)}window.addEventListener('resize',resize);resize();
+function draw(series){const w=canvas.clientWidth,h=canvas.clientHeight;ctx.clearRect(0,0,w,h);const max=Math.max(...series,5);ctx.strokeStyle='#1d3854';ctx.lineWidth=1;for(let y=1;y<4;y++){ctx.beginPath();ctx.moveTo(0,y*h/4);ctx.lineTo(w,y*h/4);ctx.stroke()}ctx.beginPath();series.forEach((v,i)=>{const x=i/(series.length-1)*w,y=h-(v/max)*h*.82-8;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.strokeStyle='#52b6ff';ctx.lineWidth=2.5;ctx.stroke();ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();ctx.fillStyle='#52b6ff16';ctx.fill()}
+async function poll(){try{const s=await(await fetch('/api/health_series',{cache:'no-store'})).json();draw(s.series);const h=await(await fetch('/health',{cache:'no-store'})).json();document.getElementById('statRps').textContent=h.packets_per_sec||0;document.getElementById('statClients').textContent=h.clients;const packets=await(await fetch('/api/packets',{cache:'no-store'})).json();document.getElementById('packetBadge').textContent=packets.filter(p=>Date.now()/1000-p.ts<30).length+' packets / 30s'}catch(e){}}setInterval(poll,1000);poll();
+</script></body></html>

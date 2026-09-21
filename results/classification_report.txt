@@ -1,0 +1,9 @@
+              precision    recall  f1-score   support
+
+      BENIGN       1.00      1.00      1.00    225255
+         DoS       1.00      1.00      1.00    128027
+    PortScan       1.00      1.00      1.00    158930
+
+    accuracy                           1.00    512212
+   macro avg       1.00      1.00      1.00    512212
+weighted avg       1.00      1.00      1.00    512212

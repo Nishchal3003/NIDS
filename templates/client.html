@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="theme-color" content="#07111f"/>
+<title>NIDS-Live | Secure room</title>
+<style>
+  :root{--bg:#07111f;--panel:rgba(14,28,48,.86);--panel-2:#10233b;--line:rgba(148,183,220,.16);
+    --text:#edf6ff;--muted:#88a2bd;--accent:#52b6ff;--accent-2:#8a7dff;--danger:#ff6b7d;--ok:#49e3a5}
+  *{box-sizing:border-box} body{margin:0;min-height:100vh;background:radial-gradient(circle at 10% 0,#13345a 0,transparent 35%),var(--bg);
+    color:var(--text);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  button,input{font:inherit} button{border:0;cursor:pointer;transition:transform .18s,filter .18s,background .18s}
+  button:hover{filter:brightness(1.12);transform:translateY(-1px)} button:active{transform:translateY(0)}
+  .shell{max-width:1280px;margin:auto;min-height:100vh;padding:24px;display:grid;grid-template-rows:auto 1fr}
+  header{display:flex;align-items:center;gap:16px;padding:10px 0 22px}.brand{display:flex;align-items:center;gap:12px;min-width:220px}
+  .brand-mark{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 10px 30px #318ee644;font-size:21px}
+  h1{font-size:17px;margin:0;letter-spacing:.01em}.eyebrow{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.13em}
+  .header-tools{margin-left:auto;display:flex;align-items:center;gap:10px}.name-wrap{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+  input{background:#09182a;color:var(--text);border:1px solid var(--line);outline:none;border-radius:10px;padding:10px 12px}
+  input:focus{border-color:#52b6ffaa;box-shadow:0 0 0 3px #52b6ff1a}.name-wrap input{width:140px;padding:8px 10px}
+  .presence{display:flex;align-items:center;gap:7px;color:var(--ok);font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 14px currentColor}
+  main{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:18px;min-height:0}.chat-card,.side-card{border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(18px);border-radius:22px;box-shadow:0 24px 70px #0003}
+  .chat-card{min-height:620px;display:grid;grid-template-rows:auto 1fr auto;overflow:hidden}.card-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line)}
+  .card-head h2{font-size:14px;margin:0}.room-meta{color:var(--muted);font-size:12px}.messages{overflow:auto;padding:24px;display:flex;flex-direction:column;gap:12px}
+  .msg{max-width:min(650px,88%);padding:12px 14px;border:1px solid var(--line);background:#10213a;border-radius:6px 16px 16px 16px;box-shadow:0 8px 24px #00012}
+  .msg .who{color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.02em;margin-bottom:3px}.msg .time{color:var(--muted);font-size:10px;margin-left:8px;font-weight:400}
+  .msg.file{border-style:dashed;background:#0d1d31}.msg.file a{color:var(--accent);text-decoration:none;font-weight:600}.sys{align-self:center;color:var(--muted);font-size:12px;background:#0c1a2c;border-radius:999px;padding:6px 12px}
+  .composer{padding:15px 18px;border-top:1px solid var(--line);background:#09182acc}.composer-row{display:flex;gap:9px}.composer input{flex:1;min-width:0;padding:13px 14px}
+  .btn{border-radius:10px;padding:11px 15px;color:white;background:linear-gradient(135deg,#319fe9,#657bff);font-weight:700}.btn.secondary{background:#1b3049;color:#cfe4f8}.btn.danger{background:linear-gradient(135deg,#ef516d,#b93667)}
+  .composer-hint{color:var(--muted);font-size:11px;margin:9px 2px 0}.side{display:flex;flex-direction:column;gap:14px}.side-card{padding:18px}.side-card h3{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:0 0 14px}
+  .identity{display:flex;align-items:center;gap:12px;padding-bottom:15px;border-bottom:1px solid var(--line)}.avatar{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:#214a70;font-weight:800}
+  .identity strong{display:block}.identity small{color:var(--muted)}.roster{display:flex;flex-direction:column;gap:9px;margin-top:14px}.person{display:flex;align-items:center;gap:9px;color:#c8d8e8;font-size:13px}.person i{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+  .notice{font-size:12px;color:var(--muted);background:#0a1b2f;border:1px solid var(--line);border-radius:12px;padding:12px}.notice b{color:var(--text);display:block;margin-bottom:4px}
+  .attack-box{border:1px solid #ff6b7d44;background:#241526;border-radius:14px;padding:13px}.attack-box p{font-size:12px;color:#c9a8b2;margin:0 0 11px}.attack-box .btn{width:100%;margin-top:8px}.attack-status{color:var(--muted);font-size:11px;margin-top:9px;min-height:16px}
+  @media(max-width:850px){.shell{padding:14px}.header-tools{gap:8px}.brand{min-width:0}.name-wrap span{display:none}main{grid-template-columns:1fr}.side{display:grid;grid-template-columns:1fr 1fr}.chat-card{min-height:calc(100vh - 115px)}} 
+  @media(max-width:560px){header{align-items:flex-start}.header-tools{flex-direction:column;align-items:flex-end}.presence{order:-1}.side{display:flex}.messages{padding:17px}.composer-row{flex-wrap:wrap}.composer input{flex-basis:100%}.composer .btn{flex:1}.name-wrap input{width:110px}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header><div class="brand"><div class="brand-mark">✦</div><div><div class="eyebrow">Protected room</div><h1>NIDS-Live Connect</h1></div></div>
+    <div class="header-tools"><div class="presence"><i class="dot"></i><span id="connectionStatus">Connecting</span></div><label class="name-wrap"><span>Display name</span><input id="nameInput" maxlength="24" aria-label="Display name"/></label></div>
+  </header>
+  <main>
+    <section class="chat-card"><div class="card-head"><div><h2>Team conversation</h2><div class="room-meta">Encrypted in-memory relay · files up to 20 MB</div></div><span class="room-meta" id="rosterCount">0 online</span></div>
+      <div id="messages" class="messages"><div class="sys">Welcome — messages appear here in real time.</div></div>
+      <div class="composer"><div class="composer-row"><input id="textInput" placeholder="Write a message…" autocomplete="off" aria-label="Message"/><button class="btn secondary" id="fileBtn" title="Share a file">↗ File</button><button class="btn" id="sendBtn">Send</button><input id="fileInput" type="file" hidden/></div><div class="composer-hint">Press Enter to send · Share files with everyone in this room</div></div>
+    </section>
+    <aside class="side">
+      <div class="side-card"><h3>People in room</h3><div class="identity"><div class="avatar" id="avatar">U</div><div><strong id="identityName">Connecting…</strong><small>That’s you</small></div></div><div id="roster" class="roster"></div></div>
+      <div class="side-card"><h3>Authorized LAN test</h3><div class="attack-box"><p>Use the configured private-LAN target. Packets are captured independently by Npcap.</p><button class="btn danger" id="dosBtn">⚠ Send DoS attack</button><button class="btn secondary" id="scanBtn">⌕ Send PortScan attack</button><div class="attack-status" id="attackStatus"></div></div><div class="notice" style="margin-top:12px"><b>Capture-only detection</b>No Socket.IO attack labels or features are sent to the detector.</div></div>
+    </aside>
+  </main>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const socket=io(), messages=document.getElementById('messages'), nameInput=document.getElementById('nameInput');
+let dosTimer=null,scanTimer=null,scanIndex=0; nameInput.value=localStorage.getItem('nids-name')||('user-'+Math.random().toString(36).slice(2,6));
+function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function addMsg(content,cls=''){const d=document.createElement('div');d.className='msg '+cls;d.innerHTML=content;messages.appendChild(d);messages.scrollTop=messages.scrollHeight}
+function updateIdentity(){const n=nameInput.value.trim()||'anonymous';document.getElementById('identityName').textContent=n;document.getElementById('avatar').textContent=n[0].toUpperCase();localStorage.setItem('nids-name',n)}
+function sendText(){const input=document.getElementById('textInput');if(!input.value.trim())return;socket.emit('chat_message',{text:input.value.trim()});input.value='';input.focus()}
+nameInput.addEventListener('change',()=>{updateIdentity();socket.emit('set_name',{name:nameInput.value})});document.getElementById('sendBtn').onclick=sendText;document.getElementById('textInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText()}});
+socket.on('connect',()=>{document.getElementById('connectionStatus').textContent='Live';socket.emit('set_name',{name:nameInput.value});updateIdentity()});
+socket.on('disconnect',()=>document.getElementById('connectionStatus').textContent='Offline');
+socket.on('system',d=>addMsg(escapeHtml(d.msg),'sys'));
+socket.on('roster',d=>{document.getElementById('rosterCount').textContent=d.clients.length+' online';document.getElementById('roster').innerHTML=d.clients.map(n=>`<div class="person"><i></i>${escapeHtml(n)}</div>`).join('')});
+socket.on('chat_message',d=>addMsg(`<div class="who">${escapeHtml(d.name)}<span class="time">${new Date(d.ts*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></div>${escapeHtml(d.text)}`));
+socket.on('file_message',d=>{const url=`data:${encodeURIComponent(d.mime)};base64,${d.content}`;addMsg(`<div class="who">${escapeHtml(d.name)}</div><a href="${url}" download="${escapeHtml(d.filename)}">↗ ${escapeHtml(d.filename)}</a>`,'file')});
+document.getElementById('fileBtn').onclick=()=>document.getElementById('fileInput').click();
+document.getElementById('fileInput').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>socket.emit('file_message',{filename:f.name,mime:f.type||'application/octet-stream',content:r.result.split(',')[1]});r.readAsDataURL(f);e.target.value=''};
+const dosBtn=document.getElementById('dosBtn'),scanBtn=document.getElementById('scanBtn'),attackStatus=document.getElementById('attackStatus');
+socket.on('packet_test_status',d=>{if(d.error){attackStatus.textContent=`Error: ${d.error}. Check /health for the configured private target.`;return}attackStatus.textContent=d.running?`Sending bounded ${d.kind==='syn_dos'?'DoS':'PortScan'} attack to ${d.target}. Watch the monitor.`:`Packet test ${d.status||'completed'}.`});
+socket.on('run_packet_test',async d=>{
+  attackStatus.textContent=`Sending bounded ${d.kind==='syn_dos'?'DoS':'PortScan'} attack from this LAN client to ${d.target}.`;
+  const ports=d.ports||[];
+  if(d.kind==='portscan'){
+    await Promise.all(ports.map((port,index)=>fetch(`http://${d.target}:${port}/?nids_probe=${Date.now()}-${index}`,{mode:'no-cors',cache:'no-store'}).catch(()=>null)));
+  }else{
+    const deadline=Date.now()+5000;
+    while(Date.now()<deadline){
+      await Promise.all(Array.from({length:8},(_,index)=>fetch(`http://${d.target}:5000/?nids_dos=${Date.now()}-${index}`,{mode:'no-cors',cache:'no-store'}).catch(()=>null)));
+    }
+  }
+  attackStatus.textContent=`${d.kind==='syn_dos'?'DoS':'PortScan'} attack completed. Check the live monitor.`;
+});
+function startPacketTest(kind){socket.emit('start_packet_test',{kind,ports:[21,22,23,25,53,80,110,139,443,445,8080,8443]})}
+dosBtn.onclick=()=>startPacketTest('syn_dos');scanBtn.onclick=()=>startPacketTest('portscan');
+</script>
+</body>
+</html>
