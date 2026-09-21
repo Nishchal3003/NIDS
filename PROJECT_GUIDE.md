@@ -192,7 +192,7 @@ file events remain `accepted`.
 4. The CICIDS-2017-trained Random Forest predicts BENIGN, DoS, or PortScan. Training
    happens once at process startup from the CSV files in `dataset/`.
 5. Live classification applies the model plus source-level behavioural evidence:
-   eight distinct destination ports within five seconds for PortScan, and
+   four distinct destination ports within five seconds for PortScan, and
    sustained high-rate SYN traffic for DoS.
 6. SHAP attribution, threat assessment, and dashboard publication happen only
    after captured-flow classification during an explicitly authorized packet-test
@@ -389,6 +389,8 @@ Invoke-RestMethod http://127.0.0.1:5000/api/evaluate_model/status
 - Packet and alert histories are bounded deques.
 - File messages are limited by the Socket.IO buffer and terminal client limit.
 - Packet tests are bounded and restricted to RFC1918 private-LAN targets.
+- Packet tests emit raw TCP SYN frames with Scapy/Npcap rather than application
+  socket connects, so the capture path observes the generated wire traffic.
 - Do not run packet tests against systems you do not own or operate.
 
 ## 15. Troubleshooting

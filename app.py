@@ -433,27 +433,16 @@ def on_start_packet_test(data):
             None,
         )
         if peer_sid:
-            target = next(
-                (
-                    address for address in local_addresses
-                    if address
-                    and address != "0.0.0.0"
-                    and not address.startswith(("127.", "169.254."))
-                ),
-                None,
-            )
-            if target:
+            target = str(client_meta.get(peer_sid, {}).get("source_ip", "")).strip()
+            if target and target not in local_addresses:
                 _authorize_attack_window(kind)
-                socketio.emit(
-                    "run_packet_test",
-                    {"kind": kind, "target": target, "ports": raw_ports},
-                    to=peer_sid,
-                )
+                result = attack_generator.start(kind, target=target, ports=raw_ports)
                 emit("packet_test_status", {
                     "running": True,
                     "kind": kind,
                     "target": target,
-                    "origin": "authorized LAN client",
+                    "origin": "authorized Scapy/Npcap generator",
+                    **result,
                 })
                 return
         target = None

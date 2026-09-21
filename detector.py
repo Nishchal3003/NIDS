@@ -162,6 +162,8 @@ LEGACY_FEATURE_ALIASES = {
     "flow_bytes_per_s": ("flow_bytes_per_s", "flow_bytes_s"),
     "flow_packets_s": ("flow_packets_s", "flow_packets_per_s", "flow_packets_per_sec"),
     "flow_packets_per_s": ("flow_packets_s", "flow_packets_per_s", "flow_packets_per_sec"),
+    "fwd_packets_s": ("fwd_packets_s", "fwd_packets_per_s", "fwd_packets_per_sec"),
+    "bwd_packets_s": ("bwd_packets_s", "bwd_packets_per_s", "bwd_packets_per_sec"),
     "syn_flag_count": ("syn_flag_count",),
     "rst_flag_count": ("rst_flag_count",),
     "flow_iat_mean": ("flow_iat_mean",),

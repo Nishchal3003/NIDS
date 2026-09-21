@@ -1,7 +1,7 @@
 """Bounded, authorized private-LAN packet generation for local validation."""
 import ipaddress
 import os
-import socket
+import platform
 import threading
 import time
 
@@ -107,22 +107,18 @@ class AuthorizedAttackGenerator:
     def _run(self, kind, target, ports):
         try:
             interface = os.getenv("NIDS_CAPTURE_INTERFACE") or None
-            local_address = ""
-            if interface and get_if_addr is not None:
-                try:
-                    local_address = str(get_if_addr(interface))
-                except Exception:
-                    local_address = ""
+            if platform.system() == "Windows" and conf is not None:
+                conf.use_pcap = True
             if kind == "portscan":
-                for index, port in enumerate(ports):
+                for port in ports:
                     if self.stop_event.is_set():
                         break
-                    self._probe_tcp(target, port, local_address)
+                    self._send_syn(target, port, interface)
                     time.sleep(0.15)
             elif kind == "syn_dos":
                 deadline = time.monotonic() + 5.0
                 while time.monotonic() < deadline and not self.stop_event.is_set():
-                    self._probe_tcp(target, 80, local_address)
+                    self._send_syn(target, 80, interface)
                     time.sleep(0.02)
             else:
                 raise ValueError("unsupported packet test")
@@ -132,15 +128,12 @@ class AuthorizedAttackGenerator:
             self.status = "failed"
 
     @staticmethod
-    def _probe_tcp(target, port, local_address=""):
-        connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        connection.settimeout(0.08)
-        try:
-            if local_address:
-                connection.bind((local_address, 0))
-            connection.connect_ex((target, port))
-        finally:
-            connection.close()
+    def _send_syn(target, port, interface=None):
+        """Emit one raw TCP SYN so capture observes the same wire-level test traffic."""
+        if send is None or IP is None or TCP is None:
+            raise RuntimeError("Scapy with Npcap/libpcap is required for raw SYN generation")
+        packet = IP(dst=target) / TCP(dport=port, flags="S")
+        send(packet, iface=interface or None, verbose=False)
 
     def diagnostics(self):
         with self.lock:

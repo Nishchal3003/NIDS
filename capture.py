@@ -1,6 +1,7 @@
 """Scapy/Npcap live packet capture and CICIDS flow scoring."""
 import os
 import platform
+import statistics
 import threading
 import time
 from collections import defaultdict, deque
@@ -44,8 +45,26 @@ class LivePacketCapture:
 
     @staticmethod
     def _new_flow():
-        return {"first": 0.0, "last": 0.0, "bytes": 0, "fwd": 0, "bwd": 0,
-                "syn": 0, "rst": 0}
+        return {
+            "first": 0.0,
+            "last": 0.0,
+            "bytes": 0,
+            "fwd": 0,
+            "bwd": 0,
+            "fwd_bytes": 0,
+            "bwd_bytes": 0,
+            "syn": 0,
+            "rst": 0,
+            "ack": 0,
+            "fin": 0,
+            "packet_lengths": deque(maxlen=512),
+            "fwd_lengths": deque(maxlen=512),
+            "bwd_lengths": deque(maxlen=512),
+            "iat": deque(maxlen=512),
+            "fwd_iat": deque(maxlen=512),
+            "bwd_iat": deque(maxlen=512),
+            "last_direction": {},
+        }
 
     def start(self):
         if not self.enabled:
@@ -107,30 +126,76 @@ class LivePacketCapture:
             destination = str(getattr(ip, "dst", ""))
             source_port = int(getattr(transport, "sport", 0) or 0)
             destination_port = int(getattr(transport, "dport", 0) or 0)
-            key = (source, destination, source_port, destination_port, proto)
+            endpoint = (source, source_port)
+            reverse_endpoint = (destination, destination_port)
+            ordered_endpoints = (
+                (endpoint, reverse_endpoint)
+                if endpoint <= reverse_endpoint
+                else (reverse_endpoint, endpoint)
+            )
+            key = ordered_endpoints + (proto,)
             now = time.time()
             with self.lock:
                 self.packet_count += 1
                 self.capture_history.append(now)
                 flow = self.flows[key]
                 flow["first"] = flow["first"] or now
+                previous = flow["last"]
                 flow["last"] = now
-                flow["bytes"] += len(packet)
-                flow["fwd"] += 1
+                packet_length = len(packet)
+                flow["bytes"] += packet_length
+                flow["packet_lengths"].append(packet_length)
+                if previous:
+                    flow["iat"].append(now - previous)
+                direction = "fwd" if endpoint == key[0] else "bwd"
+                flow[direction] += 1
+                flow[f"{direction}_bytes"] += packet_length
+                prior_direction = flow["last_direction"].get(direction)
+                if prior_direction is not None:
+                    flow[f"{direction}_iat"].append(now - prior_direction)
+                flow["last_direction"][direction] = now
+                flow[f"{direction}_lengths"].append(packet_length)
                 if packet.haslayer(TCP):
                     flags = int(packet[TCP].flags)
                     flow["syn"] += int(bool(flags & 0x02))
                     flow["rst"] += int(bool(flags & 0x04))
+                    flow["ack"] += int(bool(flags & 0x10))
+                    flow["fin"] += int(bool(flags & 0x01))
                 duration = max(now - flow["first"], 0.001)
+                lengths = list(flow["packet_lengths"])
+                iats = list(flow["iat"])
+                fwd_iats = list(flow["fwd_iat"])
+                bwd_iats = list(flow["bwd_iat"])
+                mean_length = statistics.fmean(lengths) if lengths else 0.0
                 features = {
                     "destination_port": destination_port,
                     "flow_duration_us": duration * 1_000_000,
                     "total_fwd_packets": flow["fwd"],
                     "total_bwd_packets": flow["bwd"],
+                    "total_length_of_fwd_packets": flow["fwd_bytes"],
+                    "total_length_of_bwd_packets": flow["bwd_bytes"],
                     "flow_bytes_per_s": flow["bytes"] / duration,
-                    "flow_packets_per_s": flow["fwd"] / duration,
+                    "flow_packets_per_s": (flow["fwd"] + flow["bwd"]) / duration,
+                    "fwd_packets_per_s": flow["fwd"] / duration,
+                    "bwd_packets_per_s": flow["bwd"] / duration,
+                    "flow_iat_mean": statistics.fmean(iats) * 1_000_000 if iats else 0.0,
+                    "flow_iat_std": statistics.pstdev(iats) * 1_000_000 if len(iats) > 1 else 0.0,
+                    "flow_iat_max": max(iats, default=0.0) * 1_000_000,
+                    "flow_iat_min": min(iats, default=0.0) * 1_000_000,
+                    "fwd_iat_total": sum(fwd_iats) * 1_000_000,
+                    "fwd_iat_mean": statistics.fmean(fwd_iats) * 1_000_000 if fwd_iats else 0.0,
+                    "bwd_iat_total": sum(bwd_iats) * 1_000_000,
+                    "bwd_iat_mean": statistics.fmean(bwd_iats) * 1_000_000 if bwd_iats else 0.0,
+                    "min_packet_length": min(lengths, default=0),
+                    "max_packet_length": max(lengths, default=0),
+                    "packet_length_mean": mean_length,
+                    "packet_length_std": statistics.pstdev(lengths) if len(lengths) > 1 else 0.0,
+                    "average_packet_size": mean_length,
+                    "down_up_ratio": flow["bwd"] / max(flow["fwd"], 1),
                     "syn_flag_count": flow["syn"],
                     "rst_flag_count": flow["rst"],
+                    "ack_flag_count": flow["ack"],
+                    "fin_flag_count": flow["fin"],
                 }
                 ports = self.scan_ports[source]
                 ports.append((now, destination_port))
