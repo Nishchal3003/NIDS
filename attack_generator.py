@@ -28,6 +28,15 @@ class AuthorizedAttackGenerator:
     def _discover_private_target():
         if get_if_addr is None:
             return ""
+        if conf is not None:
+            for route in getattr(conf.route, "routes", []):
+                if len(route) < 3 or route[0] != 0:
+                    continue
+                gateway = str(route[2]).strip()
+                try:
+                    return AuthorizedAttackGenerator._validate_target(gateway)
+                except (TypeError, ValueError):
+                    continue
         interfaces = [conf.iface] if conf is not None else []
         if get_if_list is not None:
             interfaces.extend(get_if_list())
@@ -106,19 +115,18 @@ class AuthorizedAttackGenerator:
 
     def _run(self, kind, target, ports):
         try:
-            interface = os.getenv("NIDS_CAPTURE_INTERFACE") or None
             if platform.system() == "Windows" and conf is not None:
                 conf.use_pcap = True
             if kind == "portscan":
                 for port in ports:
                     if self.stop_event.is_set():
                         break
-                    self._send_syn(target, port, interface)
+                    self._send_syn(target, port)
                     time.sleep(0.15)
             elif kind == "syn_dos":
                 deadline = time.monotonic() + 5.0
                 while time.monotonic() < deadline and not self.stop_event.is_set():
-                    self._send_syn(target, 80, interface)
+                    self._send_syn(target, 80)
                     time.sleep(0.02)
             else:
                 raise ValueError("unsupported packet test")
@@ -128,12 +136,13 @@ class AuthorizedAttackGenerator:
             self.status = "failed"
 
     @staticmethod
-    def _send_syn(target, port, interface=None):
+    def _send_syn(target, port):
         """Emit one raw TCP SYN so capture observes the same wire-level test traffic."""
         if send is None or IP is None or TCP is None:
             raise RuntimeError("Scapy with Npcap/libpcap is required for raw SYN generation")
         packet = IP(dst=target) / TCP(dport=port, flags="S")
-        send(packet, iface=interface or None, verbose=False)
+        # Layer-3 send() selects the route itself; iface is not supported here.
+        send(packet, verbose=False)
 
     def diagnostics(self):
         with self.lock:

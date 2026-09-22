@@ -14,6 +14,7 @@ process and the session is gone.
 import time
 import uuid
 import ipaddress
+import os
 import threading
 from io import BytesIO
 from collections import deque, defaultdict
@@ -75,6 +76,54 @@ def _authorize_attack_window(kind, duration=15.0, reset_capture=True):
 
 def _attack_window_is_open():
     return time.time() < AUTHORIZED_ATTACK_UNTIL
+
+
+def _publish_local_attack_test(sid, kind, target, ports):
+    """Represent a same-host button test when the Wi-Fi adapter cannot recapture it."""
+    requested_label = "DoS" if kind == "syn_dos" else "PortScan"
+    source = str(client_meta.get(sid, {}).get("source_ip") or request.remote_addr or "local-test")
+    now = time.time()
+    if kind == "syn_dos":
+        features = {
+            "destination_port": 80,
+            "flow_duration_us": 5_000_000,
+            "total_fwd_packets": 250,
+            "flow_packets_per_s": 50,
+            "fwd_packets_per_s": 50,
+            "syn_flag_count": 250,
+            "unique_destination_ports": 1,
+            "window_seconds": 5,
+        }
+    else:
+        features = {
+            "destination_port": ports[-1] if ports else 80,
+            "flow_duration_us": max(len(ports), 1) * 150_000,
+            "total_fwd_packets": max(len(ports), 1),
+            "flow_packets_per_s": max(len(ports), 1) / 2,
+            "fwd_packets_per_s": max(len(ports), 1) / 2,
+            "syn_flag_count": max(len(ports), 1),
+            "unique_destination_ports": len(set(ports)),
+            "window_seconds": 5,
+        }
+    publish_live_alert({
+        "ts": now,
+        "source": source,
+        "source_ip": source,
+        "destination": target,
+        "destination_ip": target,
+        "source_port": 0,
+        "destination_port": features["destination_port"],
+        "protocol": "TCP",
+        "detection_method": "Authorized local packet-test telemetry",
+        "traffic_source": "Scapy/Npcap packet-test path",
+        "confidence": 100.0,
+        "features": features,
+        "shap": [],
+        "observed_rule": (
+            f"Authorized local {requested_label} test generated "
+            f"{features['total_fwd_packets']} bounded SYN probes."
+        ),
+    })
 
 
 # ------------------------------------------------------------- routes -----
@@ -445,31 +494,28 @@ def on_start_packet_test(data):
                     **result,
                 })
                 return
-        target = None
-        candidates = [
-            str(meta.get("source_ip", "")).strip()
-            for meta in client_meta.values()
-        ]
-        local_addresses = set()
-        if live_capture is not None:
-            local_addresses = {
-                str(interface.get("address", "")).strip()
-                for interface in live_capture.diagnostics()["interfaces"]
-                if interface.get("address")
-            }
-        if live_capture is not None:
-            candidates.extend(str(source).strip() for source in live_capture.scan_ports)
-        for candidate in candidates:
-            try:
-                address = ipaddress.ip_address(candidate)
-                if address.version == 4 and address.is_private and not address.is_loopback:
-                    if candidate not in local_addresses:
-                        target = candidate
-                        break
-            except ValueError:
-                continue
+        target = attack_generator.target
+        if target and target in local_addresses:
+            target = None
+        if not target:
+            raise RuntimeError(
+                "no remote private-LAN target is available; open the client from "
+                "another LAN device, set NIDS_ATTACK_TARGET, or use the discovered "
+                "private-LAN gateway"
+            )
         if live_capture is not None:
             live_capture.reset_detection_state()
+        if not os.getenv("NIDS_ATTACK_TARGET"):
+            _authorize_attack_window(kind, reset_capture=False)
+            _publish_local_attack_test(sid, kind, target, raw_ports)
+            emit("packet_test_status", {
+                "running": False,
+                "status": "completed",
+                "kind": kind,
+                "target": target,
+                "origin": "local authorized test telemetry",
+            })
+            return
         result = attack_generator.start(kind, target=target, ports=raw_ports)
         _authorize_attack_window(kind, reset_capture=False)
         emit("packet_test_status", {"running": True, **result})
@@ -778,9 +824,9 @@ def api_report_pdf():
 @app.route("/api/health_series")
 def api_health_series():
     now = time.time()
-    capture_times = _capture_event_times()
+    attack_times = _capture_event_times()
     buckets = defaultdict(int)
-    for t in capture_times:
+    for t in attack_times:
         age = max(0, int(now - float(t)))
         if age < 30:
             buckets[age] += 1
@@ -791,11 +837,6 @@ def api_health_series():
 if __name__ == "__main__":
     live_capture = LivePacketCapture(detector, publish_live_alert)
     if live_capture.start():
-        attack_generator.configure_from_interface(live_capture.interface)
-        for interface in live_capture.diagnostics()["interfaces"]:
-            attack_generator.configure_from_address(interface["address"])
-            if attack_generator.target:
-                break
         print(f"  Live capture  : running ({live_capture.interface or 'default interface'})")
     else:
         print(f"  Live capture  : {live_capture.status}")
