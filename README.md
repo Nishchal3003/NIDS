@@ -1,299 +1,447 @@
-# NIDS-Live â€” Role-Separated Intelligent Network Intrusion Detection System
+# NIDS-Live — Intelligent Network Intrusion Detection System
 
-An end-to-end demonstration platform: real packet capture, a CICIDS-2017
-Random Forest, SHAP explanations, adaptive baseline/drift detection,
-multi-window reconnaissance, identity correlation, risk scoring, and an
-incident lifecycle â€” now wrapped in a proper **CLIENT / ATTACKER / MONITOR**
-role model instead of a single shared demo page.
+> **Real packet capture · Dual ML models · SHAP explanations · Role-separated UI · DNS Tunneling detection**
 
-For the original, pre-role-separation architecture and every core module's
-internals, see `PROJECT_GUIDE.md`. This document covers what changed and how
-to run the new end-to-end demo.
+An end-to-end security demonstration platform built on a **CLIENT / ATTACKER / MONITOR** role model. The system captures live packets, runs two independent machine learning pipelines (CICIDS-2017 Random Forest for DoS/PortScan, CIC-Bell-DNS-EXF-2021 Random Forest for DNS tunneling), generates SHAP-backed SOC explanations, scores risk, manages incidents, and broadcasts role-appropriate alerts in real time over WebSockets.
 
-## 1. Architecture
+---
+
+## Table of Contents
+
+1. [System Architecture](#1-system-architecture)
+2. [Detection Pipeline](#2-detection-pipeline)
+3. [Dual ML Models](#3-dual-ml-models)
+4. [Role System](#4-role-system)
+5. [Attack Orchestration](#5-attack-orchestration)
+6. [API Reference](#6-api-reference)
+7. [Socket.IO Events](#7-socketio-events)
+8. [Configuration](#8-configuration)
+9. [Project Structure](#9-project-structure)
+10. [Quick Start](#10-quick-start)
+11. [Testing](#11-testing)
+12. [End-to-End Demo](#12-end-to-end-demo)
+13. [Troubleshooting](#13-troubleshooting)
+14. [Known Limitations](#14-known-limitations)
+
+---
+
+## 1. System Architecture
 
 ```
-NORMAL USERS                         AUTHORIZED ATTACKER
-     |                                       |
-     v                                       v
-/client/login  ---------------------  /attacker/login
-     |                                       |
-     v                                       v
-   /client                               /attacker
-     |                                       |
-     +-------------- private communication --+
-                          |
-                 (same Flask-SocketIO backend)
-                          |
-                          v
-              AUTHORIZED SECURITY TEST
-              (bounded attack generator)
-                          |
-                          v
-            REAL PACKETS on the monitored interface
-                          |
-                          v
-        Scapy/Npcap capture -> flow aggregation -> features
-                          |
-                          v
-       Random Forest -> behavioural/recon/baseline detectors
-                          |
-                          v
-                   SHAP explanation
-                          |
-                          v
-                    Risk correlation
-                          |
-                          v
-                    Incident engine
-                          |
-              +-----------+-----------+
-              v                       v
-      security_alert (clients)   full incident (monitor)
-              |                       |
-              v                       v
-     "channel under attack"    /monitor auto-activates
+NORMAL USERS                    AUTHORIZED ATTACKER          SECURITY MONITOR
+     |                                  |                           |
+     v                                  v                           v
+/client/login               /attacker/login                    /monitor
+     |                                  |                    (no login needed)
+     v                                  v                           ^
+   /client  <--- Socket.IO room --->  /attacker                     |
+                                                                     |
+                  Flask-SocketIO backend (app.py)                    |
+                                                                     |
+                LAUNCH ATTACK (single button)                        |
+                        |                                            |
+            attack_orchestrator.py                                   |
+            secrets.choice(DOS | PORTSCAN | DNS_TUNNEL)              |
+                        |                                            |
+            bounded generator starts real packets                    |
+                        |                                            |
+                capture.py  (Scapy / Npcap)                         |
+                        |                                            |
+                flow aggregation -> feature extraction               |
+                        |                                            |
+                +------------------+   +------------------+         |
+                | CICIDS-2017 RF   |   | CIC-Bell-DNS RF  |         |
+                | DoS / PortScan   |   |  DNS Tunneling   |         |
+                +--------+---------+   +--------+---------+         |
+                         +-----------+-----------+                   |
+                     SHAP explanation (explanation.py)               |
+                                  |                                  |
+                         Risk scoring (risk.py)                      |
+                                  |                                  |
+                       Incident engine (incidents.py)                |
+                                  |                                  |
+                +-------------------+-------------------+            |
+                v                                       v            |
+         security_alert                     anomaly / incident ------+
+         (non-technical, clients room)       (full payload, monitor)
 ```
 
-The attack generator **starts a real, bounded test**. It never tells the
-backend "DoS detected" â€” the NIDS pipeline (capture â†’ flow â†’ features â†’
-Random Forest â†’ risk â†’ incident) makes that determination independently,
-exactly as before this change. See `app.py::_run_attack_test` and
-`publish_live_alert`.
+> **Key design principle:** The orchestrator **never** tells the detector which attack was launched. The capture -> features -> ML -> risk pipeline makes that determination entirely independently. Attack type is only revealed *after* the detector reports a result, for audit/demo correlation only.
 
-## 2. Roles
+---
 
-| Role | Identity | Sees |
+## 2. Detection Pipeline
+
+| Stage | Module | Description |
 |---|---|---|
-| **CLIENT** | `CLIENT-0001`, `CLIENT-0002`, ... | Private chat, participant roster, security status. **Never** attack controls. |
-| **ATTACKER** | `ATTACKER-0001`, ... (display: `AUTHORIZED SECURITY TEST`) | Same chat channel + a Security Test Lab (DoS/PortScan test buttons). |
-| **MONITOR** | n/a (no login) | `/monitor` â€” full technical detail: source IP, confidence, SHAP, risk, incident timeline. |
+| **Capture** | `capture.py` | Scapy/Npcap live packet capture; gracefully degrades if no raw socket access |
+| **Flow features** | `detector.py` | Extracts CICIDS-2017-compatible per-flow features (packet rates, byte counts, flag ratios, inter-arrival times) |
+| **DNS features** | `dns_features.py` | Per-query stateless features (entropy, subdomain length, label counts, character ratios) in a sliding window |
+| **CICIDS ML** | `detector.py` `AnomalyDetector` | Trained Random Forest — DoS / PortScan / BENIGN |
+| **DNS ML** | `dns_detector.py` `DNSTunnelDetector` | Trained Random Forest — DNS_TUNNELING / BENIGN |
+| **Behavioural** | `recon.py` `ReconEngine` | Deterministic port-scan counter (no ML) |
+| **Baseline** | `baseline.py` | Adaptive traffic baseline; flags drift from session-normal behaviour |
+| **Explanation** | `explanation.py` | Builds a structured SOC evidence pack: severity, evidence bullets, SHAP contributions, recommended action |
+| **Risk** | `risk.py` | Multi-signal risk score combining ML confidence, source history, and behavioural indicators |
+| **Identity** | `identity.py` | Correlates source IP -> session identity for human-readable attribution |
+| **Incidents** | `incidents.py` | Creates, updates, and resolves incident records with full timeline |
 
-Identity is issued server-side (`sessions.py`) and is never derived from the
-username typed at login â€” an attacker who types "Alice" is still recorded
-and displayed as `ATTACKER-000N` / `AUTHORIZED SECURITY TEST`, never as a
-trusted client identity.
+---
 
-## 3. Login workflow
+## 3. Dual ML Models
 
-1. `GET /` â€” role-selection landing page.
-2. `POST /client/login` (username only, no password â€” this is a controlled
-   demo environment, not production auth) â†’ issues `CLIENT-000N`, redirects
-   to `/client`.
-3. `POST /attacker/login` (username only, kept only as a display label) â†’
-   issues `ATTACKER-000N`, redirects to `/attacker`.
-4. Both use Flask's signed session cookie to remember the role/identity
-   across requests and Socket.IO reconnects.
+### Model 1 — CICIDS-2017 Random Forest (`models/random_forest.pkl`)
 
-## 4. Communication workflow
+| Property | Value |
+|---|---|
+| **Training dataset** | CICIDS-2017 (Friday DDoS + PortScan CSVs) |
+| **Algorithm** | `sklearn` Random Forest Classifier |
+| **Classes** | `BENIGN`, `DoS`, `PortScan` |
+| **Explainability** | SHAP `TreeExplainer` |
+| **Feature source** | Live flow aggregation via Scapy |
 
-`/client` and `/attacker` both connect to the same Socket.IO backend and
-share the `chat_message`/`file_message` events â€” private communication is
-unchanged from before this sprint. `/client` shows **only** communication +
-security status. `/attacker` additionally shows the Security Test Lab.
+### Model 2 — DNS Tunnel Detector (`models/dns_tunnel_rf.pkl`)
 
-## 5. Attack-testing workflow
+| Property | Value |
+|---|---|
+| **Training dataset** | CIC-Bell-DNS-EXF-2021 (stateless per-query features, light subset) |
+| **Algorithm** | `sklearn` Random Forest Classifier |
+| **Classes** | `BENIGN`, `DNS_TUNNELING` |
+| **Training rows** | 102,774 (82,219 train / 20,555 test) |
+| **Macro F1** | 0.77 |
+| **DNS_TUNNELING recall** | ~99.9% |
+| **BENIGN recall** | ~60.9% |
+| **Features (11)** | `subdomain_length`, `upper`, `lower`, `numeric`, `special`, `entropy`, `labels`, `labels_max`, `labels_average`, `len`, `subdomain` |
+| **Explainability** | SHAP `TreeExplainer` |
 
-1. Attacker clicks **Send DoS Test** / **Send PortScan Test** on `/attacker`
-   (or `POST /api/attack/dos` / `/api/attack/portscan`).
-2. Backend checks the caller's session role is `ATTACKER` â€” **403** otherwise
-   (see Security model below).
-3. `AuthorizedAttackGenerator` starts bounded, RFC1918-only traffic.
-4. Scapy/Npcap captures the resulting packets independently.
-5. The existing detection pipeline runs unchanged (flow â†’ features â†’ RF â†’
-   SHAP â†’ risk â†’ incident).
+To retrain the DNS model:
 
-## 6. Automatic detection & notification workflow
+```bash
+python ml/train_dns_model.py
+```
 
-`publish_live_alert` (unchanged detection logic, new broadcast logic):
+This reads `dataset/dns/{Attacks,Benign}/stateless_features-*.csv`, writes `models/dns_tunnel_rf.pkl` + `models/dns_tunnel_rf.metadata.json`, and prints a full precision/recall/F1/confusion-matrix report.
 
-- Emits `anomaly` (full technical payload) â€” unchanged, monitor already
-  listens for this.
-- Emits `security_alert` to the `clients` Socket.IO room only â€” a short,
-  non-technical message ("this channel is under attack"), no SHAP/RF/
-  confidence detail.
-- Emits `monitor_activation` to the `clients` room with `{"redirect":
-  "/monitor"}` â€” the client page auto-navigates there ~7 seconds after
-  showing the alert (no popup windows, since browsers block those).
-- Emits `security_incident_detected` (full payload: incident id, severity,
-  category, source/destination IP, risk, confidence, timeline) to everyone.
+See [`dns/FEATURE_MAPPING.md`](dns/FEATURE_MAPPING.md) for the full dataset -> live-packet -> model feature mapping and known exclusions.
 
-## 7. API architecture
+---
 
-Existing routes (`/api/alerts`, `/api/baseline`, `/api/recon`, `/api/risk`,
-`/api/identity`, `/api/incidents`, `/api/report.pdf`, etc.) are unchanged.
-New in this sprint:
+## 4. Role System
 
-- `GET /ready`, `GET /live`, `GET /metrics`
-- `GET /api/incidents/<id>` (single incident, was previously list-only)
-- `POST /api/attack/dos`, `POST /api/attack/portscan` â€” role-gated (403 for
-  non-attackers)
-- `GET /api/v1/system/status`, `/api/v1/clients`, `/api/v1/sessions`,
-  `/api/v1/incidents`, `/api/v1/alerts`, `/api/v1/risk`, `/api/v1/recon`,
-  `/api/v1/baseline`, `/api/v1/metrics`, `/api/v1/model` â€” thin, read-only
-  aliases over the routes above, for diagnostics/scripting
-- `GET /api/v1/test/connectivity`, `/test/ml`, `/test/capture`, `/test/socket`,
-  `POST /test/demo` â€” safe diagnostics; none of them trigger or fake a
-  detection
+| Role | Login URL | Identity Format | Capabilities |
+|---|---|---|---|
+| **CLIENT** | `/client/login` | `CLIENT-0001`, `CLIENT-0002`, ... | Private chat, file sharing, security status alerts |
+| **ATTACKER** | `/attacker/login` | `ATTACKER-0001` (displayed as `AUTHORIZED SECURITY TEST`) | All client features + **LAUNCH ATTACK** button |
+| **MONITOR** | `/monitor` | None (no login) | Full technical dashboard: source IP, confidence %, SHAP values, risk score, incident timeline |
 
-## 8. Socket.IO event architecture
+**Identity is server-side only.** A user who types "Alice" at the attacker login is still issued `ATTACKER-0001` and displayed as `AUTHORIZED SECURITY TEST`. Role enforcement is applied independently on both the Socket.IO handlers and REST endpoints — hiding a button is not access control.
 
-| Event | Direction | Purpose |
+```
+POST /api/attack/dos  (as a normal client session)
+-> 403  {"error": "Security testing controls are restricted to the authorized attacker role."}
+```
+
+---
+
+## 5. Attack Orchestration
+
+The attacker has a single **LAUNCH ATTACK** button. The backend randomly selects one of three attack types using `secrets.choice`:
+
+```
+LAUNCH ATTACK
+    |
+    v
+attack_orchestrator.py
+secrets.choice([DOS, PORTSCAN, DNS_TUNNEL])
+    |
+    +-- DOS        -> AuthorizedAttackGenerator  (RFC1918-only SYN flood)
+    +-- PORTSCAN   -> AuthorizedAttackGenerator  (bounded port sweep)
+    +-- DNS_TUNNEL -> DNSTunnelTestGenerator     (~30 queries, ~3.6s burst)
+    |
+    v
+Real packets on the monitored interface
+    |
+    v
+Independent detection pipeline runs
+    |
+    v
+orchestrator.note_detection()  <- correlates result back (audit only)
+    |
+    v
+attack_test_completed -> MATCH / MISS + which attack was actually launched
+```
+
+The attacker never knows which type was launched until the detector independently reports a result. The correlation is **audit-only** and never feeds back into the detection logic.
+
+---
+
+## 6. API Reference
+
+### Health & Observability
+
+| Method | Route | Description |
 |---|---|---|
-| `connect` / `disconnect` | client â†” server | Registers/removes the session in `sessions.py`, joins the `clients` or `attackers` room |
-| `set_name`, `chat_message`, `file_message` | both | Unchanged private communication |
-| `start_packet_test`, `stop_packet_test` | attacker â†’ server | Role-gated; server replies with `packet_test_status` |
-| `security_alert` | server â†’ clients room | Client-safe attack notice |
-| `monitor_activation` | server â†’ clients room | Tells the client page to auto-redirect to `/monitor` |
-| `security_incident_detected` | server â†’ all | Full technical incident payload |
-| `anomaly` | server â†’ all | Original full alert payload (monitor dashboard) |
-| `baseline_drift`, `recon_finding`, `incident_update` | server â†’ all | Unchanged from the previous sprint |
+| `GET` | `/health` | Service health |
+| `GET` | `/ready` | Readiness probe (ML models loaded?) |
+| `GET` | `/live` | Liveness probe |
+| `GET` | `/metrics` | Prometheus-style text metrics |
 
-## 9. Security model
+### Core Dashboard APIs
 
-Hiding a button is not access control. Both the Socket.IO handler
-(`on_start_packet_test`) and the REST endpoints (`/api/attack/dos`,
-`/api/attack/portscan`) independently verify, **server-side**, that the
-caller's session role is `ATTACKER` before starting any test:
+| Method | Route | Description |
+|---|---|---|
+| `GET` | `/api/alerts` | Recent anomaly alert history |
+| `GET` | `/api/baseline` | Current traffic baseline state |
+| `GET` | `/api/recon` | Active reconnaissance findings |
+| `GET` | `/api/risk` | Current risk scores by source |
+| `GET` | `/api/identity` | Source IP -> session identity map |
+| `GET` | `/api/incidents` | All incidents (list) |
+| `GET` | `/api/incidents/<id>` | Single incident with full timeline |
+| `GET` | `/api/report.pdf` | PDF report of current session |
+
+### Attack Control (role-gated — 403 for non-attackers)
+
+| Method | Route | Description |
+|---|---|---|
+| `POST` | `/api/attack/dos` | Start bounded DoS test (direct) |
+| `POST` | `/api/attack/portscan` | Start bounded PortScan test (direct) |
+| `POST` | `/api/v1/attack/launch` | Random orchestrated attack launch |
+| `GET` | `/api/v1/attack/status/<test_run_id>` | Status of a specific test run |
+| `GET` | `/api/v1/attack/history` | All test run records |
+
+### V1 Read-Only Aliases (diagnostics / scripting)
+
+`/api/v1/system/status` · `/api/v1/clients` · `/api/v1/sessions` · `/api/v1/incidents` · `/api/v1/alerts` · `/api/v1/risk` · `/api/v1/recon` · `/api/v1/baseline` · `/api/v1/metrics` · `/api/v1/model`
+
+### Safe Diagnostics (never trigger a detection)
+
+`GET /api/v1/test/connectivity` · `GET /test/ml` · `GET /test/capture` · `GET /test/socket` · `POST /test/demo`
+
+---
+
+## 7. Socket.IO Events
+
+| Event | Direction | Description |
+|---|---|---|
+| `connect` / `disconnect` | client <-> server | Register/remove session, join `clients` or `attackers` room |
+| `set_name` | client -> server | Set display name |
+| `chat_message` | both | Private chat relay |
+| `file_message` | both | File relay (base64, max 20 MB) |
+| `launch_attack` | attacker -> server | Trigger random orchestrated attack |
+| `start_packet_test` / `stop_packet_test` | attacker -> server | Role-gated direct packet test |
+| `packet_test_status` | server -> attacker | Test start confirmation |
+| `attack_test_requested` | server -> attacker | Orchestrator acknowledged |
+| `attack_test_started` | server -> attacker | Generator started (type hidden) |
+| `attack_test_completed` | server -> attacker | Type revealed + MATCH/MISS |
+| `security_alert` | server -> clients room | Non-technical alert ("channel under attack") |
+| `monitor_activation` | server -> clients room | Opens `/monitor` in a new tab |
+| `security_incident_detected` | server -> all | Full incident payload |
+| `anomaly` | server -> all | Full technical alert payload (monitor dashboard) |
+| `detection_result` | server -> all | ML pipeline result |
+| `risk_updated` | server -> all | Risk score changed |
+| `incident_created` | server -> all | New incident opened |
+| `baseline_drift` | server -> all | Traffic baseline drift detected |
+| `recon_finding` | server -> all | New reconnaissance indicator |
+| `incident_update` | server -> all | Incident status changed |
+
+---
+
+## 8. Configuration
+
+Copy `.env.example` to `.env` and adjust. All variables are optional for local demo use.
+
+```env
+# Flask session signing
+NIDS_SECRET_KEY=nids-live-demo
+
+# Packet capture
+NIDS_CAPTURE_INTERFACE=
+NIDS_CAPTURE_FILTER=ip and (tcp or udp)
+NIDS_CAPTURE_ENABLED=1
+
+# DoS/PortScan attack target (RFC1918 auto-discovery if blank)
+NIDS_ATTACK_TARGET=
+
+# DNS tunneling test
+NIDS_DNS_TEST_DOMAIN=nids-test.invalid
+NIDS_DNS_TEST_RESOLVER=
+
+# Random attack orchestration
+ATTACK_AUTOMATION_ENABLED=1
+ATTACK_COOLDOWN_SECONDS=10
+ALLOWED_ATTACK_TYPES=DOS,PORTSCAN,DNS_TUNNEL
+ATTACK_CORRELATION_TIMEOUT_SECONDS=30
+```
+
+---
+
+## 9. Project Structure
 
 ```
-POST /api/attack/dos   (as a normal client)
-403
-{"error": "Security testing controls are restricted to the authorized attacker role."}
+NIDS-full/
++-- app.py                        # Flask + Flask-SocketIO main application
++-- detector.py                   # CICIDS-2017 Random Forest + feature extraction
++-- dns_detector.py               # CIC-Bell-DNS-EXF-2021 DNS tunnel RF detector
++-- dns_features.py               # Per-query stateless DNS feature extractor
++-- dns_attack_generator.py       # Bounded DNS tunnel query burst generator
++-- attack_generator.py           # Bounded DoS / PortScan generator
++-- attack_orchestrator.py        # Random 3-way attack orchestration
++-- capture.py                    # Scapy / Npcap live packet capture
++-- baseline.py                   # Adaptive traffic baseline + drift detection
++-- recon.py                      # Multi-window reconnaissance engine
++-- identity.py                   # Source IP -> session identity registry
++-- risk.py                       # Multi-signal risk scorer
++-- incidents.py                  # Incident lifecycle manager
++-- sessions.py                   # Role / session registry (CLIENT / ATTACKER)
++-- explanation.py                # SOC explanation builder (SHAP + evidence)
++-- terminal_client.py            # CLI test client
+|
++-- templates/
+|   +-- role_select.html          # Landing page
+|   +-- client.html               # Client chat + security status
+|   +-- client_login.html
+|   +-- attacker.html             # Attacker lab (LAUNCH ATTACK + chat)
+|   +-- attacker_login.html
+|   +-- monitor.html              # Live security dashboard (technical)
+|   +-- incidents.html            # Incident list
+|   +-- incident_detail.html      # Single incident timeline + acknowledge/resolve
+|
++-- models/
+|   +-- random_forest.pkl         # Trained CICIDS-2017 model
+|   +-- dns_tunnel_rf.pkl         # Trained DNS tunnel model
+|   +-- dns_tunnel_rf.metadata.json
+|
++-- dataset/
+|   +-- Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv
+|   +-- Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv
+|   +-- dns/
+|       +-- Attacks/              # CIC-Bell-DNS-EXF-2021 tunneling CSVs (6 types)
+|       +-- Benign/               # CIC-Bell-DNS-EXF-2021 benign traffic CSV
+|
++-- ml/
+|   +-- train_dns_model.py        # DNS model training script
+|
++-- dns/
+|   +-- FEATURE_MAPPING.md        # Dataset -> live feature mapping + exclusions
+|
++-- results/
+|   +-- evaluation.json
+|   +-- classification_report.txt
+|   +-- confusion_matrix.png
+|
++-- tests/                        # 12 pytest modules
++-- requirements.txt
++-- .env.example
 ```
 
-A username is never sufficient to become the attacker role â€” only
-`/attacker/login` issues it.
+---
 
-## 10. Testing
+## 10. Quick Start
 
-- `tests/test_sessions.py` â€” role/session registry unit tests
-- `tests/test_roles_integration.py` â€” full chain: client login â†’ attacker
-  login â†’ role enforcement on both the socket and REST attack paths â†’
-  confirmed detection â†’ incident creation â†’ client-safe broadcast â†’
-  monitor activation payload, plus health/ready/live/metrics and every
-  `/api/v1/*` route
-- All previously existing tests (detector, baseline, recon, identity, risk,
-  incidents) are unmodified and still pass
+### Prerequisites
 
-Run everything: `python -m pytest tests/ -v`
+- Python 3.9+
+- [Npcap](https://npcap.com/) (Windows) or `CAP_NET_RAW` (Linux/macOS) for live capture *(optional — app runs without it)*
 
-## 11. End-to-end demonstration
+### Install & Run
 
-```
+```bash
+git clone https://github.com/Nishchal3003/NIDS.git
+cd NIDS
+pip install -r requirements.txt
+cp .env.example .env   # optional
 python app.py
 ```
 
-1. Open `http://localhost:5000/` â†’ role selection.
-2. In one browser: Client Login â†’ `Alice`.
-3. In another browser (or private window): Client Login â†’ `Bob`.
-4. In a third: Security Test / Attacker Lab â†’ any name.
-5. On the attacker page, click **Send PortScan Test** (or DoS).
-6. Within seconds, Alice and Bob each see a **SECURITY ALERT** overlay, then
-   auto-navigate to `/monitor`.
-7. `/monitor` shows the detected attack (source IP, confidence, risk).
-8. Visit `/incidents` â†’ open the incident â†’ see the timeline and evidence â†’
-   Acknowledge â†’ Resolve.
+Open `http://localhost:5000/` in your browser.
 
-## 12. Troubleshooting
+### Retrain DNS model (optional)
 
-- **No LAN target found** â€” the attack generator needs a private-LAN target;
-  open a client from another device on the same network, or set
-  `NIDS_ATTACK_TARGET`. Locally, the system falls back to a same-host
-  authorized test telemetry path so the detection pipeline can still be
-  demonstrated (see `_publish_local_attack_test`).
-- **`403` on `/api/attack/*`** â€” you're not logged in as the attacker role in
-  this browser session; visit `/attacker/login` first.
-- **Capture shows `unavailable`** â€” live packet capture needs Npcap
-  (Windows) or root/`CAP_NET_RAW` (Linux/macOS); the app still runs and
-  serves every page without it.
-
-## 13. Randomized three-attack testing (DoS / PortScan / DNS Tunneling)
-
-The attacker page now has exactly one control, **LAUNCH ATTACK**. The
-backend (`attack_orchestrator.py`) randomly selects one of `DOS`,
-`PORTSCAN`, or `DNS_TUNNEL` via `secrets.choice`, starts that bounded
-generator, and never tells the attacker â€” or the detector â€” which one it
-picked. The type is only revealed once the independent detection pipeline
-reports a result (`attack_test_completed`), alongside whether it matched
-(`MATCH`/`MISS`).
-
-```
-LAUNCH ATTACK -> orchestrator picks 1 of 3 -> bounded generator starts
-     -> real packets -> capture.py -> correct detector -> result
-     -> orchestrator.note_detection() correlates it back onto the test run
-        (audit only -- this never influences the detection already made)
-```
-
-**DNS tunneling detection is a second, independent model** â€” not the
-CICIDS-2017 Random Forest. See `dns/FEATURE_MAPPING.md` for the full
-dataset â†’ live-packet â†’ model feature mapping (CIC-Bell-DNS-EXF-2021,
-stateless per-query features only; several dataset columns were found on
-inspection to be non-numeric or ambiguous and are explicitly excluded,
-never guessed at). A sliding per-source window (`dns_features.py`) smooths
-individual query verdicts so slow/low-rate tunneling is judged on
-sustained behaviour, not one query.
-
-Train/retrain the DNS model:
-```
+```bash
 python ml/train_dns_model.py
 ```
-This reads `dataset/dns/{Attacks,Benign}/stateless_features-*.csv`, writes
-`models/dns_tunnel_rf.pkl` + `.metadata.json`, and prints precision/recall/
-F1/confusion-matrix. Current bundled-data result: macro F1 â‰ˆ 0.77 (DNS_TUNNELING
-recall â‰ˆ 0.999, BENIGN recall â‰ˆ 0.61 â€” see Â§14 limitations).
 
-New config (see `.env.example`): `ATTACK_AUTOMATION_ENABLED`,
-`ATTACK_COOLDOWN_SECONDS`, `ALLOWED_ATTACK_TYPES`,
-`ATTACK_CORRELATION_TIMEOUT_SECONDS`, `NIDS_DNS_TEST_DOMAIN`,
-`NIDS_DNS_TEST_RESOLVER`.
+---
 
-New routes/events: `POST /api/v1/attack/launch` (role-gated, 403 for
-non-attackers), `GET /api/v1/attack/status/<test_run_id>`,
-`GET /api/v1/attack/history`; Socket.IO `launch_attack` (in),
-`attack_test_requested` / `attack_test_started` / `attack_test_completed`
-(out), plus `detection_result`, `risk_updated`, `incident_created` emitted
-alongside the existing `anomaly`/`security_alert`/`monitor_activation`.
+## 11. Testing
 
-**Monitor now opens in a new tab**, never replacing the client page â€” see
-`templates/client.html`'s `monitor_activation` handler (`window.open` with
-a named target so repeat attacks focus the same tab; a visible "Open
-Security Monitor" button appears if the browser blocks the popup).
+| Test file | Coverage |
+|---|---|
+| `test_detector.py` | CICIDS anomaly detector |
+| `test_baseline.py` | Adaptive traffic baseline |
+| `test_recon.py` | Reconnaissance engine |
+| `test_identity.py` | Identity registry |
+| `test_risk.py` | Risk scorer |
+| `test_incidents.py` | Incident lifecycle |
+| `test_sessions.py` | Role / session registry |
+| `test_dns_features.py` | DNS per-query feature extractor |
+| `test_dns_detector.py` | DNS tunnel detector |
+| `test_attack_orchestrator.py` | Random orchestration, cooldown, MATCH/MISS |
+| `test_random_attack_integration.py` | Full chain: orchestrator -> generator -> detection |
+| `test_roles_integration.py` | Login -> role enforcement -> alerts -> monitor activation |
 
-## 14. Known limitations of this sprint
+```bash
+python -m pytest tests/ -v
+```
 
-- Session/role/incident state is in-memory only (consistent with the rest
-  of the project) and resets on restart.
-- The monitor dashboard's detection-pipeline checklist and animated timeline
-  view described in the original request were scoped down to the existing
-  alert/risk/incident cards plus the `/incident/<id>` timeline page, to keep
-  this change reviewable; a fuller visual timeline on `/monitor` itself is a
-  reasonable follow-up.
-- The startup splash/init-sequence animation was not built; `/health`,
-  `/ready`, and the console output already report the same information.
-- The vestigial, never-triggered `run_packet_test` browser-side fetch code
-  in the old combined page was dropped as dead code during the rewrite.
-- **DNS model quality**: trained only on the bundled "light" CIC-Bell-DNS-EXF-2021
-  subset (~103k rows) with 11 honestly-reproducible features; BENIGN recall
-  (~61%) is noticeably weaker than DNS_TUNNELING recall (~99.9%), meaning
-  some ordinary DNS traffic will be misclassified as tunneling during a
-  test window. Retraining on the full "heavy" dataset (see
-  `dns/FEATURE_MAPPING.md` Â§"Extending this") would likely improve this;
-  not done here to keep the bundled dataset size reasonable.
-- **No stateful/window-level model**: window-level DNS behaviour is a live
-  heuristic (sliding majority-ratio over per-query verdicts), not a second
-  trained classifier â€” the dataset's stateful CSV has no row-level join key
-  to the stateless CSV and several of its columns aren't live-observable
-  (see `dns/FEATURE_MAPPING.md`).
-- **Cross-dataset evaluation (UNSW-NB15 / CSE-CIC-IDS2018) and the canonical
-  feature-schema adapter layer were not built this phase** â€” this is a
-  substantial separate effort (dataset adapters, a canonical schema,
-  compatible-subset evaluation, honest same-dataset-vs-cross-dataset
-  reporting) and is called out here explicitly rather than attempted
-  partially.
-- The DNS test generator's bounded query burst (~30 queries, ~3.6s) assumes
-  a reachable resolver IP on the wire for Npcap to observe; with no
-  reachable private-LAN target it will still send the packets (capture does
-  not require a reply), but a completely isolated sandbox with no
-  configured network interface may see the generator thread fail silently
-  (reflected in its own `status`/`last_error`, not a crash).
+---
+
+## 12. End-to-End Demo
+
+```bash
+python app.py
+```
+
+1. Open `http://localhost:5000/` — choose a role.
+2. **Browser 1** — Client Login — `Alice`.
+3. **Browser 2** — Client Login — `Bob`.
+4. **Browser 3** (private window) — Attacker Lab — any name.
+5. Click **LAUNCH ATTACK** on the attacker page.
+6. The orchestrator secretly picks DoS, PortScan, or DNS Tunneling.
+7. Within seconds:
+   - Alice and Bob see a **SECURITY ALERT** overlay.
+   - `/monitor` opens in a new tab (source IP, confidence, SHAP, risk).
+   - The attacker page reveals which attack was launched and the MATCH/MISS result.
+8. Visit `/incidents` — open the incident — view timeline — Acknowledge — Resolve.
+
+---
+
+## 13. Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| **No LAN target found** | Connect a second device on the same network, or set `NIDS_ATTACK_TARGET` in `.env`. The system falls back to a local authorized-test path. |
+| **`403` on `/api/attack/*`** | Visit `/attacker/login` first — the attacker role is required. |
+| **Capture shows `unavailable`** | Install Npcap (Windows) or run with `CAP_NET_RAW` (Linux/macOS). |
+| **DNS tunnel not detected** | Set `NIDS_DNS_TEST_RESOLVER` — queries need a reachable resolver for Npcap to observe them. |
+| **DNS model not found** | Run `python ml/train_dns_model.py`. The CICIDS model is bundled. |
+
+---
+
+## 14. Known Limitations
+
+- **In-memory state only** — sessions, alerts, and incidents reset on restart. No database persistence.
+- **DNS BENIGN recall (~61%)** — trained on the bundled "light" CIC-Bell-DNS-EXF-2021 subset (~103k rows, 11 features). Some benign DNS traffic may be misclassified during a test window. Retraining on the full dataset would improve this.
+- **Window-level DNS detection is heuristic** — sliding majority-ratio over per-query verdicts, not a second trained classifier.
+- **No cross-dataset evaluation** — UNSW-NB15 / CSE-CIC-IDS2018 adapters and a canonical feature-schema layer are a substantial separate effort.
+- **DNS query burst assumes a reachable resolver** — in a completely isolated sandbox the generator thread may fail silently (reflected in its own `status`/`last_error`).
+
+---
+
+## Dependencies
+
+| Package | Purpose |
+|---|---|
+| `flask` | Web framework |
+| `flask-socketio` | WebSocket server |
+| `python-socketio` | Socket.IO protocol |
+| `scikit-learn` | Random Forest classifiers |
+| `shap` | Model explainability (TreeExplainer) |
+| `numpy` | Numerical operations |
+| `pandas` | DataFrame handling for DNS features |
+| `scapy` | Live packet capture and crafting |
+| `matplotlib` | Confusion matrix plots |
+
+---
+
+*For deep internals of each module, see [`PROJECT_GUIDE.md`](PROJECT_GUIDE.md).*
