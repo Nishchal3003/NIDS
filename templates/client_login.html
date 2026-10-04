@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#080e1a"/>
+<title>Client Login | NIDS-Live</title>
+<style>
+:root{--bg:#080e1a;--card:#0e1929;--line:#1c2c42;--text:#ecf5ff;--muted:#8299b3;--blue:#52b6ff;--purple:#8e7dff}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 15% 0,#173257 0,transparent 32%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,sans-serif}
+.card{width:100%;max-width:380px;padding:30px;background:linear-gradient(145deg,#102139dd,#0b1626dd);border:1px solid var(--line);border-radius:18px}
+.eyebrow{color:var(--muted);font-size:11px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
+h1{margin:0 0 18px;font-size:19px}
+label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px}
+input{width:100%;background:#09182a;color:var(--text);border:1px solid var(--line);outline:none;border-radius:10px;padding:12px 13px;font:inherit;margin-bottom:8px}
+input:focus{border-color:#52b6ffaa;box-shadow:0 0 0 3px #52b6ff1a}
+.note{color:var(--muted);font-size:11.5px;margin:6px 0 18px}
+button{width:100%;border:0;cursor:pointer;border-radius:10px;padding:13px;color:white;font:inherit;font-weight:700;background:linear-gradient(135deg,#319fe9,#657bff)}
+button:hover{filter:brightness(1.1)}
+.back{display:block;text-align:center;margin-top:16px;color:var(--muted);font-size:12.5px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="eyebrow">Normal Network Participant</div>
+  <h1>Client Login</h1>
+  <form method="post" action="/client/login">
+    <label for="username">Username</label>
+    <input id="username" name="username" maxlength="24" placeholder="e.g. Alice" autofocus required/>
+    <div class="note">No password is required in this controlled demonstration environment. This is not production authentication -- the system is architected so real authentication can be added later without changing the role model.</div>
+    <button type="submit">Login</button>
+  </form>
+  <a class="back" href="/">← Back to environment selection</a>
+</div>
+</body>
+</html>

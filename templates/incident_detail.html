@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#080e1a"/>
+<title>Incident {{ incident.id }} | NIDS-Live</title>
+<style>
+:root{--bg:#080e1a;--card:#0e1929;--line:#1c2c42;--text:#ecf5ff;--muted:#8299b3;--blue:#52b6ff;--red:#ff6c80;--green:#4de2a6;--amber:#ffb454}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,sans-serif}
+.wrap{max-width:760px;margin:auto;padding:28px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+h1{font-size:18px;margin:0}
+a.back{color:var(--muted);font-size:12.5px;text-decoration:none}
+.card{border:1px solid var(--line);background:var(--card);border-radius:14px;padding:18px;margin-bottom:16px}
+.kv{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #16243866}
+.kv span{color:var(--muted)}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0 0 10px}
+.timeline{display:flex;flex-direction:column;gap:8px}
+.tl-item{display:flex;gap:10px;font-size:12.5px;color:#c8d8e8}
+.tl-item .ts{color:var(--muted);min-width:82px}
+.actions{display:flex;gap:10px}
+button{border:0;cursor:pointer;border-radius:9px;padding:10px 16px;font:inherit;font-weight:700;color:white}
+.ack{background:#2a3a52}.resolve{background:linear-gradient(135deg,#2f9e6b,#1c7a4f)}
+pre{white-space:pre-wrap;font-size:11.5px;color:#9db2c8;background:#0a1626;border-radius:8px;padding:10px;max-height:220px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Incident {{ incident.id }}</h1><a class="back" href="/incidents">← All incidents</a></header>
+  <div class="card">
+    <div class="kv"><span>Summary</span><b>{{ incident.summary }}</b></div>
+    <div class="kv"><span>Category</span><b>{{ incident.category }}</b></div>
+    <div class="kv"><span>Severity</span><b>{{ incident.severity }}</b></div>
+    <div class="kv"><span>Status</span><b id="statusVal">{{ incident.status }}</b></div>
+    <div class="kv"><span>Source</span><b>{{ incident.source }}</b></div>
+    <div class="kv"><span>Events</span><b>{{ incident.event_count }}</b></div>
+  </div>
+  <div class="card">
+    <h2>Timeline</h2>
+    <div class="timeline" id="timeline"><div style="color:var(--muted);font-size:12.5px">No timeline recorded for this incident.</div></div>
+  </div>
+  <div class="card">
+    <h2>Evidence</h2>
+    <pre id="evidence">{{ incident.evidence }}</pre>
+  </div>
+  <div class="actions">
+    <button class="ack" onclick="act('ack')">Acknowledge</button>
+    <button class="resolve" onclick="act('resolve')">Resolve</button>
+  </div>
+</div>
+<script>
+const incidentId = {{ incident.id | tojson }};
+function renderTimeline(){
+  const evidence = {{ incident.evidence | tojson }};
+  const last = evidence[evidence.length-1] || {};
+  const timeline = last.timeline;
+  if(Array.isArray(timeline) && timeline.length){
+    document.getElementById('timeline').innerHTML = timeline.map(t=>{
+      const ts = new Date(t.ts*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      return `<div class="tl-item"><span class="ts">${ts}</span><span>${t.stage.replaceAll('_',' ')}</span></div>`;
+    }).join('');
+  }
+}
+renderTimeline();
+async function act(kind){
+  const res = await fetch(`/api/incidents/${incidentId}/${kind}`, {method:'POST'});
+  const data = await res.json();
+  if(data.ok){document.getElementById('statusVal').textContent = data.incident.status}
+}
+</script>
+</body>
+</html>

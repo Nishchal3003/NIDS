@@ -1,0 +1,31 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.DS_Store
+Thumbs.db
+
+# DNS dataset: only the bundled "light" stateless CSVs (dataset/dns/) are
+# tracked for reproducible training of the small demo model. Heavier
+# variants, the stateful/*.csv files (not used for training -- see
+# dns/FEATURE_MAPPING.md), and any raw packet captures are left for the
+# user to add locally and are not committed.
+dataset/dns/**/stateless_features-heavy_*.csv
+dataset/dns/**/stateful_features-*.csv
+*.pcap
+*.pcapng
+# Generated attack-test logs/scratch artifacts
+/attack_logs/
+/tmp_attack_runs/

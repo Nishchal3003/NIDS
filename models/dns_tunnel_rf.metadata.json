@@ -1,0 +1,77 @@
+{
+  "model_name": "dns_tunnel_rf",
+  "version": "1.0.0",
+  "model_type": "RandomForestClassifier",
+  "training_dataset": "CIC-Bell-DNS-EXF-2021 (stateless per-query features, light subset)",
+  "attack_files": [
+    "stateless_features-light_audio.pcap.csv",
+    "stateless_features-light_compressed.pcap.csv",
+    "stateless_features-light_exe.pcap.csv",
+    "stateless_features-light_image.pcap.csv",
+    "stateless_features-light_text.pcap.csv",
+    "stateless_features-light_video.pcap.csv"
+  ],
+  "benign_files": [
+    "stateless_features-light_benign.pcap.csv"
+  ],
+  "features": [
+    "subdomain_length",
+    "upper",
+    "lower",
+    "numeric",
+    "special",
+    "entropy",
+    "labels",
+    "labels_max",
+    "labels_average",
+    "len",
+    "subdomain"
+  ],
+  "class_labels": [
+    "BENIGN",
+    "DNS_TUNNELING"
+  ],
+  "training_timestamp": 1791028880.8448715,
+  "rows_total": 102774,
+  "rows_train": 82219,
+  "rows_test": 20555,
+  "macro_f1": 0.7701,
+  "classification_report": {
+    "BENIGN": {
+      "precision": 0.9993168465637382,
+      "recall": 0.6085871193210185,
+      "f1-score": 0.756477219837617,
+      "support": 12018.0
+    },
+    "DNS_TUNNELING": {
+      "precision": 0.6446056210335449,
+      "recall": 0.9994143141618835,
+      "f1-score": 0.7837229596288982,
+      "support": 8537.0
+    },
+    "accuracy": 0.7709073218195086,
+    "macro avg": {
+      "precision": 0.8219612337986415,
+      "recall": 0.804000716741451,
+      "f1-score": 0.7701000897332575,
+      "support": 20555.0
+    },
+    "weighted avg": {
+      "precision": 0.8519964995751097,
+      "recall": 0.7709073218195086,
+      "f1-score": 0.7677930495918455,
+      "support": 20555.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      7314,
+      4704
+    ],
+    [
+      5,
+      8532
+    ]
+  ],
+  "sklearn_version": "1.8.0"
+}

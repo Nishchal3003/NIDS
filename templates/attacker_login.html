@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#1a0d12"/>
+<title>Security Test Login | NIDS-Live</title>
+<style>
+:root{--bg:#140b12;--card:#1e0f18dd;--line:#4a2436;--text:#ffeef2;--muted:#c99;--red:#ff6c80}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 85% 0,#3a1522 0,transparent 32%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,sans-serif}
+.card{width:100%;max-width:380px;padding:30px;background:linear-gradient(145deg,#241019dd,#170a11dd);border:1px solid var(--line);border-radius:18px}
+.eyebrow{color:var(--red);font-size:11px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px;font-weight:700}
+h1{margin:0 0 18px;font-size:19px}
+label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px}
+input{width:100%;background:#100810;color:var(--text);border:1px solid var(--line);outline:none;border-radius:10px;padding:12px 13px;font:inherit;margin-bottom:8px}
+input:focus{border-color:#ff6c80aa;box-shadow:0 0 0 3px #ff6c801a}
+.note{color:var(--muted);font-size:11.5px;margin:6px 0 18px}
+button{width:100%;border:0;cursor:pointer;border-radius:10px;padding:13px;color:white;font:inherit;font-weight:700;background:linear-gradient(135deg,#ef516d,#b93667)}
+button:hover{filter:brightness(1.1)}
+.back{display:block;text-align:center;margin-top:16px;color:var(--muted);font-size:12.5px;text-decoration:none}
+.badge{display:inline-block;font-size:10.5px;letter-spacing:.08em;border:1px solid var(--line);border-radius:99px;padding:5px 10px;margin-bottom:16px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="eyebrow">⚠ Authorized Security Testing Only</div>
+  <h1>Security Test / Attacker Lab</h1>
+  <div class="badge">This environment is separate from the normal client network</div>
+  <form method="post" action="/attacker/login">
+    <label for="username">Tester name (label only)</label>
+    <input id="username" name="username" maxlength="24" placeholder="e.g. your name" autofocus required/>
+    <div class="note">Whatever name you enter is used only as a label for this test session. The backend never treats it as a trusted client identity -- your role is always recorded as AUTHORIZED ATTACKER / SECURITY TEST, independent of what you type here.</div>
+    <button type="submit">Enter Security Test Environment</button>
+  </form>
+  <a class="back" href="/">← Back to environment selection</a>
+</div>
+</body>
+</html>
