@@ -85,10 +85,17 @@ class AttackOrchestrator:
         self._selection_pool = []
 
     def _next_type(self):
-        """Return a randomized type, guaranteeing one draw of each enabled
-        type before any type is selected again."""
+        """Return a randomized type, forcing DNS tunneling every third launch."""
+        next_launch = self.total_tests + 1
+        if next_launch % 3 == 0 and DNS_TUNNEL in self.allowed_types:
+            self._selection_pool = []
+            return DNS_TUNNEL
+
+        random_types = [attack_type for attack_type in self.allowed_types if attack_type != DNS_TUNNEL]
+        if not random_types:
+            random_types = list(self.allowed_types)
         if not self._selection_pool:
-            self._selection_pool = list(self.allowed_types)
+            self._selection_pool = random_types
             secrets.SystemRandom().shuffle(self._selection_pool)
         return self._selection_pool.pop()
 

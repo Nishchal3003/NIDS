@@ -54,6 +54,21 @@ def test_randomized_cycle_launches_every_enabled_type_once():
     assert {entry[0] for entry in log} == {DOS, PORTSCAN, DNS_TUNNEL}
 
 
+def test_every_third_launch_is_dns_tunneling():
+    log = []
+    orch = AttackOrchestrator(_runners(log), cooldown_seconds=0)
+    for _ in range(6):
+        orch.last_launch_ts = 0
+        assert orch.launch("sid-1", "10.0.0.5")["ok"] is True
+
+    assert log[2][0] == DNS_TUNNEL
+    assert log[5][0] == DNS_TUNNEL
+    assert log[0][0] in {DOS, PORTSCAN}
+    assert log[1][0] in {DOS, PORTSCAN}
+    assert log[3][0] in {DOS, PORTSCAN}
+    assert log[4][0] in {DOS, PORTSCAN}
+
+
 def test_cooldown_rejects_rapid_repeat_launch():
     log = []
     orch = AttackOrchestrator(_runners(log), cooldown_seconds=30)

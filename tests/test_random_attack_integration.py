@@ -72,7 +72,7 @@ def test_three_randomized_launches_include_dns_tunneling_runner(monkeypatch):
     original = appmod.attack_orchestrator.runners[DNS_TUNNEL]
     appmod.attack_orchestrator.runners[DNS_TUNNEL] = dns_runner
     try:
-        appmod.attack_orchestrator._selection_pool = [DNS_TUNNEL]
+        appmod.attack_orchestrator.total_tests = 2
         appmod.attack_orchestrator.last_launch_ts = 0
         result = appmod.attack_orchestrator.launch("sid-dns", "10.0.0.5")
         assert result["ok"] is True
