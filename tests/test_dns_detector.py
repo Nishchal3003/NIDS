@@ -1,6 +1,7 @@
 from dns_detector import DNSTunnelDetector
 from dns_features import extract_stateless
 from dns_attack_generator import DNSTunnelTestGenerator, TEST_DOMAIN
+from explanation import generate_attack_explanation
 
 
 def test_model_loads_successfully():
@@ -24,6 +25,20 @@ def test_classify_on_tunneling_shaped_name_produces_a_classification():
     label, confidence, _ = detector.classify(features)
     assert label in {"BENIGN", "DNS_TUNNELING"}
     assert confidence > 0.0
+
+
+def test_blocked_dns_request_has_policy_explanation():
+    explanation = generate_attack_explanation({
+        "threat_type": "DNS_TUNNELING",
+        "authorization_status": "blocked",
+        "status": "blocked",
+        "detection_method": "Security test policy",
+    })
+    assert "blocked before DNS traffic was generated" in explanation["explanation"]
+    assert len(explanation["evidence"]) == 2
+    assert "No DNS queries were captured" in explanation["evidence"][1]
+    assert explanation["detectionDetails"]["Authorization status"] == "blocked"
+    assert explanation["detectionDetails"]["Policy status"] == "blocked"
 
 
 def test_feature_order_matches_training_metadata():

@@ -64,6 +64,7 @@ def generate_attack_explanation(alert):
         why = "The detector evaluates event rate, rolling volume, interval timing, and burstiness against the trained flood model."
         recommendation = "Isolate or rate-limit the source if malicious activity is confirmed, and alert the network administrator."
     elif is_dns:
+        authorization = str(_first(alert, "authorization_status") or "").lower()
         window = alert.get("window") or {}
         total = _first(window, "window_total")
         suspicious = _first(window, "window_suspicious")
@@ -81,14 +82,23 @@ def generate_attack_explanation(alert):
             evidence.append(f"Query entropy: {entropy}.")
         if _present(labels):
             evidence.append(f"DNS labels observed: {labels}.")
-        explanation = (
-            "DNS tunneling was detected. Repeated DNS queries showed encoded-looking "
-            "subdomain characteristics and a sustained suspicious ratio in the observation window."
-            if evidence else
-            "DNS tunneling was detected from suspicious query characteristics in the observation window."
-        )
-        why = "The DNS feature pipeline evaluates query length, label structure, entropy, and the rolling ratio of tunneling-like queries."
-        recommendation = "Investigate the source and queried domain, then restrict or contain the channel if the activity is not expected."
+        if authorization == "blocked":
+            evidence = [
+                "The unauthorized DNS tunneling request was blocked before any DNS packets were generated.",
+                "No DNS queries were captured or analyzed for this blocked request.",
+            ]
+            explanation = "An unauthorized DNS tunneling test request was blocked before DNS traffic was generated."
+            why = "The security test policy permits DNS tunneling traffic only during an explicitly authorized test window."
+            recommendation = "Authorize the test explicitly before generating traffic, or investigate the source if this was not an approved request."
+        else:
+            explanation = (
+                "DNS tunneling was detected. Repeated DNS queries showed encoded-looking "
+                "subdomain characteristics and a sustained suspicious ratio in the observation window."
+                if evidence else
+                "DNS tunneling was detected from suspicious query characteristics in the observation window."
+            )
+            why = "The DNS feature pipeline evaluates query length, label structure, entropy, and the rolling ratio of tunneling-like queries."
+            recommendation = "Investigate the source and queried domain, then restrict or contain the channel if the activity is not expected."
     else:
         explanation = "Suspicious activity was detected, but the available alert fields do not provide enough evidence for a more specific explanation."
         why = "The alert was raised by the detection pipeline using the evidence exposed in this record."
@@ -110,6 +120,7 @@ def generate_attack_explanation(alert):
         ("Destination port", _first(alert, "destination_port")),
         ("Timestamp", _first(alert, "ts")),
         ("Authorization status", _first(alert, "authorization_status")),
+        ("Policy status", _first(alert, "status")),
     ]
     for label, value in detail_map:
         if _present(value):

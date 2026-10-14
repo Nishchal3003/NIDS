@@ -177,6 +177,12 @@ def _attack_window_is_open():
     return time.time() < AUTHORIZED_ATTACK_UNTIL
 
 
+def _close_attack_window():
+    global AUTHORIZED_ATTACK_UNTIL, AUTHORIZED_ATTACK_KIND
+    AUTHORIZED_ATTACK_UNTIL = 0.0
+    AUTHORIZED_ATTACK_KIND = "blocked"
+
+
 def _publish_local_attack_test(sid, kind, target, ports):
     """Represent a same-host button test when the Wi-Fi adapter cannot recapture it."""
     requested_label = "DoS" if kind == "syn_dos" else "PortScan"
@@ -821,6 +827,9 @@ def _launch_dns_runner(test_run_id, sid, source_ip, authorized=True):
     )
     attack_test_log.setdefault(source_ip, {})["test_started_ts"] = time.time()
     attack_test_log[source_ip]["dns_authorization"] = "authorized" if authorized else "blocked"
+    if not authorized:
+        _close_attack_window()
+        return _publish_blocked_dns_event(sid, source_ip, test_run_id)
     if live_capture is not None:
         live_capture.reset_detection_state()
     resolver = dns_test_generator.resolver or attack_generator.target or "127.0.0.1"
@@ -829,6 +838,41 @@ def _launch_dns_runner(test_run_id, sid, source_ip, authorized=True):
         return {"running": True, **dns_test_generator.start(resolver=resolver)}
     except RuntimeError as exc:
         return {"running": False, "error": str(exc)}
+
+
+def _publish_blocked_dns_event(sid, source_ip, test_run_id):
+    """Record a real policy-blocked DNS test request for monitor explainability.
+
+    This is not a model detection and does not create a confirmed incident.
+    It is the security-policy result of refusing an unauthorized test.
+    """
+    now = time.time()
+    source = str(source_ip or client_meta.get(sid, {}).get("source_ip") or "local-test")
+    report = {
+        "id": str(uuid.uuid4())[:8],
+        "ts": now,
+        "source": source,
+        "source_ip": source,
+        "threat_type": "DNS_TUNNELING",
+        "severity": "MEDIUM",
+        "detection_method": "Security test policy",
+        "authorization_status": "blocked",
+        "status": "blocked",
+        "test_run_id": test_run_id,
+        "features": {},
+        "shap": [],
+        "observed_rule": "Unauthorized DNS tunneling test request was blocked before traffic generation.",
+    }
+    report["explanation"] = generate_attack_explanation(report)
+    with lock:
+        alerts.appendleft(report)
+    socketio.emit("anomaly", report)
+    return {
+        "running": False,
+        "status": "blocked",
+        "authorization_status": "blocked",
+        "test_run_id": test_run_id,
+    }
 
 
 def _run_demo_sequence(sid, source_ip, modes):
