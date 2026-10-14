@@ -55,7 +55,7 @@
       </div>
       <div class="side-card">
         <h3>Security test control</h3>
-        <div class="lab-note"><b>Authorized testing only</b>The backend randomly selects one of three bounded test types (DoS / PortScan / DNS Tunneling) — you don't choose, and the type stays hidden until the NIDS independently detects it.</div>
+        <div class="lab-note"><b>Authorized testing only</b>One click starts a 90-second balanced demonstration of DoS, PortScan, authorized DNS tunneling, and blocked unapproved DNS tunneling. The order is randomized and detection remains independent.</div>
         <button class="btn test-btn" id="launchBtn">⚠ LAUNCH ATTACK</button>
         <div class="status-line"><span class="pill" id="testStatus">READY</span></div>
         <div class="kv"><span>Test ID</span><b id="testId">—</b></div>
@@ -86,8 +86,9 @@ const testIdEl=document.getElementById('testId'),testStartedEl=document.getEleme
 const detectedTypeEl=document.getElementById('detectedType'),detectionStatusEl=document.getElementById('detectionStatus');
 const testCountEl=document.getElementById('testCount'),launchBtn=document.getElementById('launchBtn');
 let testsExecuted=0;
-
 launchBtn.onclick=()=>{
+  // Open during the user gesture so popup blockers do not reject the monitor
+  // when the later detection event arrives asynchronously.
   testStatus.textContent='REQUESTING';testDetail.textContent='';
   detectedTypeEl.textContent='—';detectionStatusEl.textContent='—';
   socket.emit('launch_attack');
@@ -102,7 +103,11 @@ socket.on('attack_test_started',d=>{
   const type=d.attack_type||'authorized test';
   const generator=d.generator_status||{};
   const generatorError=generator.error?` Generator error: ${generator.error}`:'';
-  testDetail.textContent=`LAUNCHED: ${type}. Bounded authorized test traffic generated.${generatorError}`;
+  testDetail.textContent=`STARTED: ${type}. The balanced demonstration is running.${generatorError}`;
+});
+socket.on('attack_demo_step',d=>{
+  const mode=(d.mode||'ATTACK').replaceAll('_',' ');
+  testDetail.textContent=`${mode.toUpperCase()} cycle ${d.cycle||'—'} started. Monitoring is available on the client device.`;
 });
 socket.on('attack_test_completed',d=>{
   testStatus.textContent='COMPLETED';

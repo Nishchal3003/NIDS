@@ -58,10 +58,9 @@ class LivePacketCapture:
         self.on_dns_alert = on_dns_alert
         self.dns_window = DNSWindowTracker(window_seconds=dns_window_seconds) if DNSWindowTracker else None
         self.dns_last_alert = {}
-        self.interface = interface or os.getenv("NIDS_CAPTURE_INTERFACE") or None
-        self.packet_filter = os.getenv(
-            "NIDS_CAPTURE_FILTER", "ip and (tcp or udp)"
-        )
+        configured_interface = (interface or os.getenv("NIDS_CAPTURE_INTERFACE") or "").strip()
+        self.interface = (None if not configured_interface or configured_interface.lower() == "auto" else configured_interface)
+        self.packet_filter = os.getenv("NIDS_CAPTURE_FILTER", "ip and (tcp or udp)")
         self.enabled = os.getenv("NIDS_CAPTURE_ENABLED", "1").lower() not in {"0", "false", "no"}
         self.status = "disabled" if not self.enabled else "not started"
         self.backend = "unavailable"
@@ -118,7 +117,10 @@ class LivePacketCapture:
                 self.backend = "Npcap/libpcap"
             else:
                 self.backend = "libpcap/Scapy"
-            self.interface = self.interface or str(conf.iface)
+            if self.interface is None:
+                    self.interface = conf.route.route("0.0.0.0")[0]
+            if self.interface is None:
+                raise RuntimeError("Could not discover the active capture interface")
             self.sniffer = AsyncSniffer(
                 iface=self.interface,
                 filter=self.packet_filter,
@@ -189,6 +191,9 @@ class LivePacketCapture:
         with self.lock:
             self.flows.clear()
             self.scan_ports.clear()
+            self.dns_last_alert.clear()
+            if self.dns_window is not None:
+                self.dns_window.reset()
             self.syn_windows.clear()
             self.last_alert.clear()
 

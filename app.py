@@ -15,6 +15,7 @@ import time
 import uuid
 import ipaddress
 import os
+import secrets
 import threading
 from io import BytesIO
 from collections import deque, defaultdict
@@ -43,7 +44,9 @@ from attack_orchestrator import AttackOrchestrator, DOS, PORTSCAN, DNS_TUNNEL
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("NIDS_SECRET_KEY", "nids-live-demo")
-socketio = SocketIO(app, async_mode="threading", max_http_buffer_size=20 * 1024 * 1024)
+MAX_FILE_BYTES = int(os.getenv("NIDS_MAX_FILE_BYTES", str(250 * 1024 * 1024)))
+SOCKET_BUFFER_BYTES = (MAX_FILE_BYTES * 4 // 3) + (1024 * 1024)
+socketio = SocketIO(app, async_mode="threading", max_http_buffer_size=SOCKET_BUFFER_BYTES)
 
 # ---------------------------------------------------------------- state ----
 detector = AnomalyDetector()
@@ -98,6 +101,8 @@ session_registry = SessionRegistry()
 # source_ip -> {"attacker_connected_ts":.., "test_started_ts":..}, used only
 # to build an honest incident timeline (real timestamps of real steps).
 attack_test_log = {}
+demo_lock = threading.Lock()
+demo_thread = None
 
 
 def _handle_traffic_metrics(metrics):
@@ -203,6 +208,7 @@ def _publish_local_attack_test(sid, kind, target, ports):
         "ts": now,
         "source": source,
         "source_ip": source,
+        "threat_type": requested_label,
         "destination": target,
         "destination_ip": target,
         "source_port": 0,
@@ -799,7 +805,7 @@ def on_stop_packet_test():
 _DEFAULT_SCAN_PORTS = [21, 22, 23, 25, 53, 80, 110, 139, 443, 445, 8080, 8443]
 
 
-def _launch_dns_runner(test_run_id, sid, source_ip):
+def _launch_dns_runner(test_run_id, sid, source_ip, authorized=True):
     """DNS_TUNNEL runner for the orchestrator: starts the bounded DNS test
     generator only. It never calls the DNS detector or reports a result --
     detection happens independently via capture.py's _handle_dns ->
@@ -811,9 +817,10 @@ def _launch_dns_runner(test_run_id, sid, source_ip):
         0,
         "dns_tunnel",
         details={"attack": "DNS_TUNNELING", "test_run_id": test_run_id},
-        status="authorized",
+        status="authorized" if authorized else "blocked",
     )
     attack_test_log.setdefault(source_ip, {})["test_started_ts"] = time.time()
+    attack_test_log[source_ip]["dns_authorization"] = "authorized" if authorized else "blocked"
     if live_capture is not None:
         live_capture.reset_detection_state()
     resolver = dns_test_generator.resolver or attack_generator.target or "127.0.0.1"
@@ -822,6 +829,37 @@ def _launch_dns_runner(test_run_id, sid, source_ip):
         return {"running": True, **dns_test_generator.start(resolver=resolver)}
     except RuntimeError as exc:
         return {"running": False, "error": str(exc)}
+
+
+def _run_demo_sequence(sid, source_ip, modes):
+    """Run the remaining balanced demonstration modes within 90 seconds."""
+    global demo_thread
+    started = time.monotonic()
+    try:
+        order = list(modes)
+        secrets.SystemRandom().shuffle(order)
+        for index, mode in enumerate(order):
+            if time.monotonic() - started >= 90:
+                return
+            test_run_id = f"DEMO-{uuid.uuid4().hex[:8]}"
+            if mode == "DOS":
+                status = _run_attack_test(sid, "syn_dos", [])
+            elif mode == "PORTSCAN":
+                status = _run_attack_test(sid, "portscan", _DEFAULT_SCAN_PORTS)
+            else:
+                status = _launch_dns_runner(
+                    test_run_id, sid, source_ip, authorized=mode == "DNS_AUTHORIZED"
+                )
+            socketio.emit("attack_demo_step", {
+                "mode": mode,
+                "status": status,
+                "cycle": index // 4 + 1,
+            }, room=sid)
+            if index < len(order) - 1:
+                time.sleep(max(0, 10 - (time.monotonic() - started) % 10))
+    finally:
+        with demo_lock:
+            demo_thread = None
 
 
 attack_orchestrator = AttackOrchestrator({
@@ -845,10 +883,41 @@ def on_launch_attack(data=None):
             "error": "Security testing controls are restricted to the authorized attacker role.",
         })
         return
+    global demo_thread
     emit("attack_test_requested", {"ok": True})
     source_ip = client_meta.get(sid, {}).get("source_ip")
-    result = attack_orchestrator.launch(sid, source_ip)
-    emit("attack_test_started", result)
+    with demo_lock:
+        if demo_thread and demo_thread.is_alive():
+            emit("attack_test_started", {
+                "ok": False,
+                "error": "The 90-second attack demonstration is already running.",
+            })
+            return
+        first_result = attack_orchestrator.launch(sid, source_ip)
+        if not first_result.get("ok"):
+            emit("attack_test_started", first_result)
+            return
+        first_run = attack_orchestrator.get(first_result["test_run_id"])
+        first_mode = first_run["selected_test_type"]
+        modes = ["DOS", "DOS", "PORTSCAN", "PORTSCAN", "DNS_AUTHORIZED", "DNS_AUTHORIZED", "DNS_BLOCKED", "DNS_BLOCKED"]
+        if first_mode == DOS:
+            modes.remove("DOS")
+        elif first_mode == PORTSCAN:
+            modes.remove("PORTSCAN")
+        else:
+            modes.remove("DNS_AUTHORIZED")
+        demo_thread = threading.Thread(
+            target=_run_demo_sequence,
+            args=(sid, source_ip, modes),
+            name="attack-demonstration",
+            daemon=True,
+        )
+        demo_thread.start()
+    first_result["generator_status"] = {
+        **(first_result.get("generator_status") or {}),
+        "demonstration": "8 balanced modes within 90 seconds",
+    }
+    emit("attack_test_started", first_result)
 
 
 # ------------------------------------------------------- detection loop ----
@@ -989,6 +1058,15 @@ def publish_dns_alert(report):
     report["severity"] = "HIGH"
     report["prediction"] = report["threat_type"]
     source = report.get("source_ip") or report.get("source")
+    authorization = attack_test_log.get(str(source), {}).get("dns_authorization")
+    if authorization:
+        report["authorization_status"] = authorization
+        report.setdefault(
+            "observed_rule",
+            f"DNS tunneling detected from a {authorization} DNS test; "
+            f"the {'authorized test was recorded' if authorization == 'authorized' else 'unapproved traffic was blocked'} "
+            "by the security test policy.",
+        )
     _finish_alert(report, source)
 
 

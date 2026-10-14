@@ -59,7 +59,7 @@
     </div>
   </header>
   <main>
-    <section class="chat-card"><div class="card-head"><div><h2>Private communication channel</h2><div class="room-meta">Encrypted in-memory relay · files up to 20 MB</div></div><span class="room-meta" id="rosterCount">0 online</span></div>
+    <section class="chat-card">    <div class="card-head"><div><h2>Private communication channel</h2><div class="room-meta">Encrypted in-memory relay · files up to 250 MB</div></div><span class="room-meta" id="rosterCount">0 online</span></div>
       <div id="messages" class="messages"><div class="sys">Welcome — messages appear here in real time.</div></div>
       <div class="composer"><div class="composer-row"><input id="textInput" placeholder="Write a message…" autocomplete="off" aria-label="Message"/><button class="btn secondary" id="fileBtn" title="Share a file">↗ File</button><button class="btn" id="sendBtn">Send</button><input id="fileInput" type="file" hidden/></div><div class="composer-hint">Press Enter to send · Share files with everyone in this room</div></div>
     </section>
@@ -105,7 +105,7 @@ onSocket('roster',d=>{const clients=Array.isArray(d&&d.clients)?d.clients:[];doc
 onSocket('chat_message',d=>{if(!d)return;addMsg(`<div class="who">${escapeHtml(d.name||'Unknown')}<span class="time">${d.ts?new Date(d.ts*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):''}</span></div>${escapeHtml(d.text||'')}`)});
 onSocket('file_message',d=>{if(!d)return;const url=`data:${encodeURIComponent(d.mime||'application/octet-stream')};base64,${d.content||''}`;addMsg(`<div class="who">${escapeHtml(d.name||'Unknown')}</div><a href="${url}" download="${escapeHtml(d.filename||'shared-file')}">↗ ${escapeHtml(d.filename||'shared-file')}</a>`,'file')});
 document.getElementById('fileBtn').onclick=()=>document.getElementById('fileInput').click();
-document.getElementById('fileInput').onchange=e=>{const f=e.target.files[0];if(!f)return;if(!socket){addMsg('File sharing is unavailable while the live connection is offline.','sys');e.target.value='';return}const r=new FileReader();r.onload=()=>emitSocket('file_message',{filename:f.name,mime:f.type||'application/octet-stream',content:String(r.result||'').split(',')[1]||''});r.readAsDataURL(f);e.target.value=''};
+document.getElementById('fileInput').onchange=e=>{const f=e.target.files[0];if(!f)return;if(f.size>250*1024*1024){addMsg('Files must be 250 MB or smaller.','sys');e.target.value='';return}if(!socket){addMsg('File sharing is unavailable while the live connection is offline.','sys');e.target.value='';return}const r=new FileReader();r.onload=()=>emitSocket('file_message',{filename:f.name,mime:f.type||'application/octet-stream',content:String(r.result||'').split(',')[1]||''});r.readAsDataURL(f);e.target.value=''};
 
 // Security alert: shown the moment the NIDS confirms an attack affecting this
 // channel. The client page is NEVER navigated away -- monitoring opens in a

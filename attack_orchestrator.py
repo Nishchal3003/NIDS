@@ -83,21 +83,57 @@ class AttackOrchestrator:
         self.last_launch_ts = 0.0
         self.total_tests = 0
         self._selection_pool = []
+        self._last_type = None
+        self._type_streak = 0
 
     def _next_type(self):
-        """Return a randomized type, forcing DNS tunneling every third launch."""
-        next_launch = self.total_tests + 1
-        if next_launch % 3 == 0 and DNS_TUNNEL in self.allowed_types:
+        """Return a balanced random sequence with no run longer than three."""
+        # Keep the three-type cadence balanced while randomizing the two
+        # non-DNS positions in each cadence. This also prevents a DNS test
+        # from being crowded out by repeated packet-test selections.
+        if DNS_TUNNEL in self.allowed_types and (self.total_tests + 1) % 3 == 0:
             self._selection_pool = []
-            return DNS_TUNNEL
+            selected = DNS_TUNNEL
+            self._type_streak = self._type_streak + 1 if selected == self._last_type else 1
+            self._last_type = selected
+            return selected
 
-        random_types = [attack_type for attack_type in self.allowed_types if attack_type != DNS_TUNNEL]
-        if not random_types:
-            random_types = list(self.allowed_types)
+        if DNS_TUNNEL in self.allowed_types:
+            non_dns = [attack_type for attack_type in self.allowed_types if attack_type != DNS_TUNNEL]
+            if non_dns:
+                if not self._selection_pool:
+                    self._selection_pool = non_dns * 1
+                    secrets.SystemRandom().shuffle(self._selection_pool)
+                selected = self._selection_pool.pop(0)
+                self._type_streak = self._type_streak + 1 if selected == self._last_type else 1
+                self._last_type = selected
+                return selected
+
         if not self._selection_pool:
-            self._selection_pool = random_types
-            secrets.SystemRandom().shuffle(self._selection_pool)
-        return self._selection_pool.pop()
+            # Each batch contains the same number of each enabled type. The
+            # shuffle keeps the order unpredictable while the retry prevents
+            # an avoidable run longer than three across batch boundaries.
+            rng = secrets.SystemRandom()
+            batch = list(self.allowed_types) * 3
+            for _ in range(100):
+                rng.shuffle(batch)
+                sequence = ([self._last_type] if self._last_type else []) + batch
+                if all(
+                    not (sequence[i] == sequence[i - 1] == sequence[i - 2] == sequence[i - 3])
+                    for i in range(3, len(sequence))
+                ):
+                    break
+        else:
+            batch = self._selection_pool
+
+        selected = batch.pop(0)
+        self._selection_pool = batch
+        if selected == self._last_type:
+            self._type_streak += 1
+        else:
+            self._last_type = selected
+            self._type_streak = 1
+        return selected
 
     def launch(self, attacker_session_id, attacker_source_ip=None):
         """Randomly select one allowed type and start it.

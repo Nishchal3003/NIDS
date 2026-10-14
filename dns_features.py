@@ -110,3 +110,7 @@ class DNSWindowTracker:
     def diagnostics(self):
         with self.lock:
             return {"tracked_sources": len(self.events)}
+
+    def reset(self):
+        with self.lock:
+            self.events.clear()

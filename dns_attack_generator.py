@@ -40,7 +40,21 @@ class DNSTunnelTestGenerator:
         self.lock = threading.Lock()
 
     def start(self, resolver=None, query_count=30, delay_seconds=0.12):
-        resolver = (resolver or self.resolver or "127.0.0.1").strip()
+        resolver = (resolver or self.resolver or "").strip()
+
+        if not resolver or resolver.lower() == "auto":
+            if conf is None:
+                raise RuntimeError("Scapy is required to discover the DNS resolver")    
+            nameservers = getattr(conf, "nameservers", [])
+
+            if not nameservers:
+                raise RuntimeError(
+                    "No system DNS resolver was discovered. "
+                    "Set NIDS_DNS_TEST_RESOLVER explicitly."
+                )
+
+            resolver = str(nameservers[0])
+
         if send is None or DNS is None:
             raise RuntimeError("Scapy is required for DNS test traffic")
         query_count = max(MIN_QUERIES, min(int(query_count), MAX_QUERIES))  # bounded
